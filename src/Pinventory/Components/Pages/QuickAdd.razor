@@ -1,0 +1,451 @@
+@page "/parts/quick"
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
+@inject ISnackbar Snackbar
+
+<PageTitle>Schnellerfassung · Pinventory</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Schnellerfassung</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Bauteile am Stück einlagern – komplett per Tastatur.
+</MudText>
+
+@if (!loaded)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    @* ---- 1. Kontext: gilt für alle folgenden Einträge ---- *@
+    <MudPaper Outlined="true" Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.PinDrop" Size="Size.Small" Class="mr-1" Style="vertical-align: middle" />
+            Wohin? <span class="mud-text-secondary">– gilt für alle folgenden Einträge</span>
+        </MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" md="6">
+                <MudAutocomplete T="int?" @bind-Value="categoryId" @ref="categoryField" Label="Kategorie" Placeholder="tippen zum Suchen, z.B. wider"
+                                 SearchFunc="SearchCategories" ToStringFunc="CategoryPath" SelectValueOnTab="true" MaxItems="null"
+                                 Clearable="true" ResetValueOnEmptyText="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudAutocomplete T="int?" @bind-Value="locationId" Label="Lagerort" Placeholder="tippen zum Suchen, z.B. kasten 2"
+                                 SearchFunc="SearchLocations" ToStringFunc="LocationPath" SelectValueOnTab="true" MaxItems="null"
+                                 Clearable="true" ResetValueOnEmptyText="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 HelperText="@(locationTree.Count == 0 ? "Noch keine Lagerorte angelegt" : null)" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @* ---- 2. Eingabezeile ---- *@
+    <MudPaper Outlined="true" Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle2" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.Keyboard" Size="Size.Small" Class="mr-1" Style="vertical-align: middle" />
+            Bauteil
+        </MudText>
+
+        <form @onsubmit="SaveAsync" @onkeydown="OnFormKeyDown" autocomplete="off">
+            @* Neuer Key nach jedem Speichern → Felder werden frisch aufgebaut und sicher geleert. *@
+            <MudGrid Spacing="2" @key="rowVersion">
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="name" @ref="nameField" Label="@Label("Name *", F.Name)" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" autocomplete="off" list="dl-names" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudTextField @bind-Value="value" @ref="valueField" Label="@Label("Wert", F.Value)" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" autocomplete="off" list="dl-values" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudTextField @bind-Value="package" @ref="packageField" Label="@Label("Bauform", F.Package)" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" autocomplete="off" list="dl-packages" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField T="int" @bind-Value="quantity" @ref="quantityField" Label="@Label("Menge", F.Quantity)" Min="0"
+                                     Immediate="true" HideSpinButtons="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudNumericField T="int" @bind-Value="minQuantity" @ref="minQuantityField" Label="@Label("Mindestbestand", F.MinQuantity)" Min="0"
+                                     Immediate="true" HideSpinButtons="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField @bind-Value="description" @ref="descriptionField" Label="@Label("Kurzbeschreibung", F.Description)" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" autocomplete="off" />
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudTextField @bind-Value="manufacturer" @ref="manufacturerField" Label="@Label("Hersteller", F.Manufacturer)" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" autocomplete="off" list="dl-manufacturers" />
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudTextField @bind-Value="partNumber" @ref="partNumberField" Label="@Label("Teilenummer", F.PartNumber)" Immediate="true"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" autocomplete="off" />
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex flex-wrap align-center gap-3">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.MoveToInbox" Disabled="saving">
+                        Einlagern
+                    </MudButton>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                        <kbd>Tab</kbd> nächstes Feld · <kbd>Enter</kbd> einlagern · <kbd>Esc</kbd> Zeile leeren ·
+                        <kbd>↑</kbd><kbd>↓</kbd> Menge ändern
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex flex-wrap align-center gap-1">
+                    <MudText Typo="Typo.caption" Class="mr-1">
+                        <MudIcon Icon="@Icons.Material.Filled.PushPin" Size="Size.Small" Style="vertical-align: middle" />
+                        Nach dem Einlagern behalten:
+                    </MudText>
+                    @foreach (var f in AllFields)
+                    {
+                        var isPinned = pinned.Contains(f);
+                        <MudChip T="string" Size="Size.Small" tabindex="-1"
+                                 Color="@(isPinned ? Color.Primary : Color.Default)" Variant="@(isPinned ? Variant.Filled : Variant.Outlined)"
+                                 Icon="@(isPinned ? Icons.Material.Filled.PushPin : null)" OnClick="() => TogglePin(f)">
+                            @FieldName(f)
+                        </MudChip>
+                    }
+                </MudItem>
+            </MudGrid>
+        </form>
+    </MudPaper>
+
+    @* ---- 3. Protokoll dieser Sitzung ---- *@
+    @if (log.Count > 0)
+    {
+        <div class="d-flex align-center gap-2 mb-2">
+            <MudText Typo="Typo.h6">In dieser Sitzung</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary">@log.Count Einträge · @log.Sum(e => e.Amount) Stück</MudChip>
+        </div>
+        <MudSimpleTable Dense="true" Hover="true" Outlined="true" Elevation="0">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Name</th>
+                    <th>Wert</th>
+                    <th>Bauform</th>
+                    <th style="text-align: right">Menge</th>
+                    <th>Lagerort</th>
+                    <th style="width: 1%"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in log)
+                {
+                    <tr @key="e">
+                        <td>
+                            @if (e.Created)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">neu</MudChip>
+                            }
+                            else
+                            {
+                                <MudTooltip Text="Gab es schon – Menge wurde erhöht">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">+ Bestand</MudChip>
+                                </MudTooltip>
+                            }
+                        </td>
+                        <td><MudLink Href="@($"parts/{e.PartId}")">@e.Name</MudLink></td>
+                        <td>@e.Value</td>
+                        <td>@e.Package</td>
+                        <td style="text-align: right; white-space: nowrap">
+                            @if (e.Created)
+                            {
+                                @e.Amount
+                            }
+                            else
+                            {
+                                <span>+@e.Amount</span> <span class="mud-text-secondary">(jetzt @e.NewTotal)</span>
+                            }
+                        </td>
+                        <td>@(e.LocationId is int l ? LocationPath(l) : "")</td>
+                        <td>
+                            <MudTooltip Text="Rückgängig">
+                                <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" tabindex="-1" OnClick="() => UndoAsync(e)" />
+                            </MudTooltip>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+
+    <datalist id="dl-names">@foreach (var v in knownNames) { <option value="@v"></option> }</datalist>
+    <datalist id="dl-values">@foreach (var v in knownValues) { <option value="@v"></option> }</datalist>
+    <datalist id="dl-packages">@foreach (var v in knownPackages) { <option value="@v"></option> }</datalist>
+    <datalist id="dl-manufacturers">@foreach (var v in knownManufacturers) { <option value="@v"></option> }</datalist>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "category")] public int? PresetCategory { get; set; }
+    [SupplyParameterFromQuery(Name = "location")] public int? PresetLocation { get; set; }
+
+    private enum F { Name, Value, Package, Quantity, MinQuantity, Description, Manufacturer, PartNumber }
+    private static readonly F[] AllFields = Enum.GetValues<F>();
+
+    private record LogEntry(int PartId, bool Created, string Name, string? Value, string? Package,
+        int Amount, int NewTotal, int? LocationId);
+
+    private bool loaded;
+    private bool saving;
+    private bool focusPending;
+    private bool focusRowPending;
+    private int rowVersion;
+
+    private List<TreeEntry<Category>> categoryTree = [];
+    private List<TreeEntry<StorageLocation>> locationTree = [];
+    private Dictionary<int, string> categoryPaths = [];
+    private Dictionary<int, string> locationPaths = [];
+
+    private List<string> knownNames = [];
+    private List<string> knownValues = [];
+    private List<string> knownPackages = [];
+    private List<string> knownManufacturers = [];
+
+    private readonly List<LogEntry> log = [];
+
+    // Kontext
+    private int? categoryId;
+    private int? locationId;
+
+    // Eingabezeile
+    private string? name;
+    private string? value;
+    private string? package;
+    private int quantity = 1;
+    private int minQuantity;
+    private string? description;
+    private string? manufacturer;
+    private string? partNumber;
+
+    // Standardmäßig behalten: nichts. Für Serien (z.B. Widerstände) Name, Bauform, Menge anpinnen.
+    private readonly HashSet<F> pinned = [];
+
+    private MudAutocomplete<int?> categoryField = default!;
+    private MudTextField<string?> nameField = default!;
+    private MudTextField<string?> valueField = default!;
+    private MudTextField<string?> packageField = default!;
+    private MudNumericField<int> quantityField = default!;
+    private MudNumericField<int> minQuantityField = default!;
+    private MudTextField<string?> descriptionField = default!;
+    private MudTextField<string?> manufacturerField = default!;
+    private MudTextField<string?> partNumberField = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        categoryTree = Tree.Flatten(await db.Categories.AsNoTracking().ToListAsync());
+        locationTree = Tree.Flatten(await db.StorageLocations.AsNoTracking().ToListAsync());
+        categoryPaths = categoryTree.ToDictionary(e => e.Node.Id, e => e.Path);
+        locationPaths = locationTree.ToDictionary(e => e.Node.Id, e => e.Path);
+
+        var all = await db.Parts.AsNoTracking()
+            .Select(p => new { p.Name, p.Value, p.Package, p.Manufacturer }).ToListAsync();
+        knownNames = Distinct(all.Select(p => p.Name));
+        knownValues = Distinct(all.Select(p => p.Value));
+        knownPackages = Distinct(all.Select(p => p.Package));
+        knownManufacturers = Distinct(all.Select(p => p.Manufacturer));
+
+        categoryId = PresetCategory is int c && categoryPaths.ContainsKey(c) ? c : null;
+        locationId = PresetLocation is int l && locationPaths.ContainsKey(l) ? l : null;
+
+        loaded = true;
+        focusPending = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!loaded) return;
+        if (focusPending)
+        {
+            focusPending = false;
+            // Mit Vorbelegung direkt in die Eingabezeile, sonst erst Kategorie wählen.
+            if (categoryId is null && locationId is null) await categoryField.FocusAsync();
+            else await nameField.FocusAsync();
+        }
+        else if (focusRowPending)
+        {
+            focusRowPending = false;
+            await FocusFirstFreeFieldAsync();
+        }
+    }
+
+    // ---------- Anzeige ----------
+
+    private string Label(string text, F field) => pinned.Contains(field) ? $"{text} 📌" : text;
+
+    private static string FieldName(F f) => f switch
+    {
+        F.Name => "Name",
+        F.Value => "Wert",
+        F.Package => "Bauform",
+        F.Quantity => "Menge",
+        F.MinQuantity => "Mindestbestand",
+        F.Description => "Beschreibung",
+        F.Manufacturer => "Hersteller",
+        F.PartNumber => "Teilenummer",
+        _ => f.ToString(),
+    };
+
+    private string CategoryPath(int? id) => id is int i ? categoryPaths.GetValueOrDefault(i) ?? "" : "";
+    private string LocationPath(int? id) => id is int i ? locationPaths.GetValueOrDefault(i) ?? "" : "";
+
+    private Task<IEnumerable<int?>> SearchCategories(string? text, CancellationToken _) => Task.FromResult(Search(categoryTree, text));
+    private Task<IEnumerable<int?>> SearchLocations(string? text, CancellationToken _) => Task.FromResult(Search(locationTree, text));
+
+    /// <summary>Alle Suchwörter müssen im Pfad vorkommen: "halb trans" findet "Halbleiter › Transistoren".</summary>
+    private static IEnumerable<int?> Search<T>(List<TreeEntry<T>> tree, string? text) where T : ITreeNode
+    {
+        var terms = (text ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return tree.Where(e => terms.All(t => e.Path.Contains(t, StringComparison.CurrentCultureIgnoreCase)))
+            .Select(e => (int?)e.Node.Id);
+    }
+
+    private static List<string> Distinct(IEnumerable<string?> values) =>
+        values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!.Trim())
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+
+    private static void Remember(List<string> list, string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v) || list.Contains(v, StringComparer.CurrentCultureIgnoreCase)) return;
+        list.Add(v);
+        list.Sort(StringComparer.CurrentCultureIgnoreCase);
+    }
+
+    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static bool SameText(string? a, string? b) =>
+        string.Equals(Clean(a) ?? "", Clean(b) ?? "", StringComparison.CurrentCultureIgnoreCase);
+
+    // ---------- Eingabe ----------
+
+    private void TogglePin(F field)
+    {
+        if (!pinned.Remove(field)) pinned.Add(field);
+    }
+
+    private void OnFormKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") ResetRow();
+    }
+
+    /// <summary>Leert alle nicht angepinnten Felder, baut die Zeile neu auf und setzt danach den Fokus.</summary>
+    private void ResetRow()
+    {
+        rowVersion++;
+        focusRowPending = true;
+        if (!pinned.Contains(F.Name)) name = null;
+        if (!pinned.Contains(F.Value)) value = null;
+        if (!pinned.Contains(F.Package)) package = null;
+        if (!pinned.Contains(F.Quantity)) quantity = 1;
+        if (!pinned.Contains(F.MinQuantity)) minQuantity = 0;
+        if (!pinned.Contains(F.Description)) description = null;
+        if (!pinned.Contains(F.Manufacturer)) manufacturer = null;
+        if (!pinned.Contains(F.PartNumber)) partNumber = null;
+    }
+
+    /// <summary>Springt in das erste nicht angepinnte Feld – bei einer Widerstandsserie also direkt in "Wert".</summary>
+    private async Task FocusFirstFreeFieldAsync()
+    {
+        var target = AllFields.FirstOrDefault(f => !pinned.Contains(f), F.Name);
+        switch (target)
+        {
+            case F.Name: await nameField.FocusAsync(); break;
+            case F.Value: await valueField.FocusAsync(); break;
+            case F.Package: await packageField.FocusAsync(); break;
+            case F.Quantity: await quantityField.FocusAsync(); await quantityField.SelectAsync(); break;
+            case F.MinQuantity: await minQuantityField.FocusAsync(); await minQuantityField.SelectAsync(); break;
+            case F.Description: await descriptionField.FocusAsync(); break;
+            case F.Manufacturer: await manufacturerField.FocusAsync(); break;
+            case F.PartNumber: await partNumberField.FocusAsync(); break;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (saving) return;
+        var cleanName = Clean(name);
+        if (cleanName is null)
+        {
+            Snackbar.Add("Bitte einen Namen eingeben.", Severity.Warning);
+            await nameField.FocusAsync();
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // Gibt es das Bauteil am selben Lagerort schon? Dann nur den Bestand erhöhen.
+            var candidates = await db.Parts.Where(p => p.StorageLocationId == locationId).ToListAsync();
+            var existing = candidates.FirstOrDefault(p =>
+                SameText(p.Name, cleanName) && SameText(p.Value, value) && SameText(p.Package, package));
+
+            LogEntry entry;
+            if (existing is not null)
+            {
+                existing.Quantity += quantity;
+                if (minQuantity > 0) existing.MinQuantity = minQuantity;
+                await db.SaveChangesAsync();
+                entry = new LogEntry(existing.Id, false, existing.Name, existing.Value, existing.Package,
+                    quantity, existing.Quantity, existing.StorageLocationId);
+                Snackbar.Add($"\"{existing.Name} {existing.Value}\" gab es schon – Bestand jetzt {existing.Quantity}.", Severity.Info);
+            }
+            else
+            {
+                var part = new Part
+                {
+                    Name = cleanName,
+                    Value = Clean(value),
+                    Package = Clean(package),
+                    Quantity = quantity,
+                    MinQuantity = minQuantity,
+                    Description = Clean(description),
+                    Manufacturer = Clean(manufacturer),
+                    PartNumber = Clean(partNumber),
+                    CategoryId = categoryId,
+                    StorageLocationId = locationId,
+                };
+                db.Parts.Add(part);
+                await db.SaveChangesAsync();
+                entry = new LogEntry(part.Id, true, part.Name, part.Value, part.Package,
+                    part.Quantity, part.Quantity, part.StorageLocationId);
+
+                Remember(knownNames, part.Name);
+                Remember(knownValues, part.Value);
+                Remember(knownPackages, part.Package);
+                Remember(knownManufacturers, part.Manufacturer);
+            }
+
+            log.Insert(0, entry);
+            ResetRow();
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task UndoAsync(LogEntry entry)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        if (entry.Created)
+        {
+            await db.Parts.Where(p => p.Id == entry.PartId).ExecuteDeleteAsync();
+            Snackbar.Add($"\"{entry.Name} {entry.Value}\" wieder entfernt.", Severity.Info);
+        }
+        else
+        {
+            var part = await db.Parts.FindAsync(entry.PartId);
+            if (part is not null)
+            {
+                part.Quantity = Math.Max(0, part.Quantity - entry.Amount);
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Bestand von \"{part.Name} {part.Value}\" zurück auf {part.Quantity}.", Severity.Info);
+            }
+        }
+        log.Remove(entry);
+        focusRowPending = true;
+    }
+}

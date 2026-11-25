@@ -98,6 +98,10 @@ else
                             }
                         </td>
                         <td style="white-space: nowrap">
+                            <MudTooltip Text="Hier einlagern (Schnellerfassung)">
+                                <MudIconButton Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" Color="Color.Primary"
+                                               Href="@($"parts/quick?{FilterQueryName}={node.Id}")" />
+                            </MudTooltip>
                             <MudTooltip Text="Unterebene anlegen">
                                 <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" OnClick="() => PrepareChildAsync(node.Id)" />
                             </MudTooltip>
