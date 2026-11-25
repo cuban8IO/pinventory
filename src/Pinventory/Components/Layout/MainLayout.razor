@@ -1,23 +1,58 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
+<MudThemeProvider @ref="themeProvider" Theme="PinventoryTheme.Theme" @bind-IsDarkMode="isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider CloseOnEscapeKey="true" />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="() => drawerOpen = !drawerOpen" aria-label="Menü" />
+        <MudLink Href="" Color="Color.Inherit" Underline="Underline.None" Class="d-flex align-center gap-2 ml-2">
+            <MudIcon Icon="@Icons.Material.Filled.Memory" />
+            <MudText Typo="Typo.h6">Pinventory</MudText>
+        </MudLink>
+        <MudSpacer />
+        <MudButton Href="parts/new" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Add" Class="mr-2">
+            Einlagern
+        </MudButton>
+        <MudTooltip Text="@(isDarkMode ? "Helles Design" : "Dunkles Design")">
+            <MudIconButton Icon="@(isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit" OnClick="() => isDarkMode = !isDarkMode" />
+        </MudTooltip>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="@DrawerVariant.Responsive">
         <NavMenu />
-    </div>
+    </MudDrawer>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="parts/new" class="btn btn-sm btn-primary">+ Bauteil einlagern</a>
-        </div>
-
-        <article class="content px-4">
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-6">
             @Body
-        </article>
-    </main>
-</div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
     Ein unerwarteter Fehler ist aufgetreten.
     <a href="." class="reload">Neu laden</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private MudThemeProvider themeProvider = default!;
+    private bool isDarkMode;
+    private bool drawerOpen = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Startet im Design des Betriebssystems.
+            isDarkMode = await themeProvider.GetSystemDarkModeAsync();
+            StateHasChanged();
+        }
+    }
+}

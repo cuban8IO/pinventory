@@ -1,118 +1,123 @@
 @page "/parts"
 @inject IDbContextFactory<PinventoryDbContext> DbFactory
+@inject NavigationManager Nav
 
 <PageTitle>Bauteile · Pinventory</PageTitle>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h3 mb-0">Bauteile</h1>
-    <a href="parts/new" class="btn btn-primary">+ Neues Bauteil</a>
+<div class="d-flex justify-space-between align-center mb-4">
+    <MudText Typo="Typo.h4">Bauteile</MudText>
+    <MudButton Href="parts/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">
+        Neues Bauteil
+    </MudButton>
 </div>
 
-<div class="row g-2 mb-3">
-    <div class="col-12 col-lg-4">
-        <input class="form-control" type="search" placeholder="Suchen: Name, Wert, Bauform, Hersteller, Teilenummer …"
-               @bind="search" @bind:event="oninput" @bind:after="ApplyFilter" autofocus />
-    </div>
-    <div class="col-6 col-lg-3">
-        <select class="form-select" @bind="categoryId" @bind:after="ApplyFilter">
-            <option value="">Alle Kategorien</option>
-            @foreach (var c in categoryTree)
-            {
-                <option value="@c.Node.Id">@(new string(' ', c.Depth * 3))@c.Node.Name</option>
-            }
-        </select>
-    </div>
-    <div class="col-6 col-lg-3">
-        <select class="form-select" @bind="locationId" @bind:after="ApplyFilter">
-            <option value="">Alle Lagerorte</option>
-            @foreach (var l in locationTree)
-            {
-                <option value="@l.Node.Id">@(new string(' ', l.Depth * 3))@l.Node.Name</option>
-            }
-        </select>
-    </div>
-    <div class="col-12 col-lg-2 d-flex align-items-center">
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="lowOnly" @bind="lowOnly" @bind:after="ApplyFilter" />
-            <label class="form-check-label" for="lowOnly">Nur nachbestellen</label>
-        </div>
-    </div>
-</div>
+<MudPaper Outlined="true" Class="pa-3 mb-4">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" lg="4">
+            <MudTextField T="string" Value="search" ValueChanged="OnSearchChanged" Immediate="true" DebounceInterval="150"
+                          Placeholder="Suchen: Name, Wert, Bauform, Hersteller, Teilenummer …" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" AutoFocus="true" />
+        </MudItem>
+        <MudItem xs="6" lg="3">
+            <MudSelect T="int?" Value="categoryId" ValueChanged="OnCategoryChanged" Label="Kategorie" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Clearable="true" Dense="true" ToStringFunc="CategoryLabel">
+                @foreach (var c in categoryTree)
+                {
+                    <MudSelectItem T="int?" Value="c.Node.Id">
+                        <span style="padding-left: @(c.Depth * 1.25)rem">@c.Node.Name</span>
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" lg="3">
+            <MudSelect T="int?" Value="locationId" ValueChanged="OnLocationChanged" Label="Lagerort" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Clearable="true" Dense="true" ToStringFunc="LocationLabel">
+                @foreach (var l in locationTree)
+                {
+                    <MudSelectItem T="int?" Value="l.Node.Id">
+                        <span style="padding-left: @(l.Depth * 1.25)rem">@l.Node.Name</span>
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" lg="2" Class="d-flex align-center">
+            <MudSwitch T="bool" Value="lowOnly" ValueChanged="OnLowOnlyChanged" Color="Color.Error" Label="Nachbestellen" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
 
 @if (parts is null)
 {
-    <p><em>Lade …</em></p>
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
 else
 {
-    <p class="text-muted small mb-2">
-        @filtered.Count von @parts.Count Bauteilen · @filtered.Sum(p => p.Quantity) Stück
+    <div class="d-flex align-center gap-2 mb-2">
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @filtered.Count von @parts.Count Bauteilen · @filtered.Sum(p => p.Quantity).ToString("N0") Stück
+        </MudText>
         @if (IsFiltered)
         {
-            <button class="btn btn-link btn-sm p-0 ms-2 align-baseline" @onclick="ResetFilter">Filter zurücksetzen</button>
+            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" OnClick="ResetFilter">
+                Filter zurücksetzen
+            </MudButton>
         }
-    </p>
+    </div>
 
-    @if (filtered.Count == 0)
-    {
-        <div class="alert alert-light border">
+    <MudDataGrid T="Part" Items="filtered" Dense="true" Hover="true" Outlined="true" Elevation="0"
+                 SortMode="SortMode.Single" RowsPerPage="50" RowClick="OnRowClick" RowStyle="cursor: pointer">
+        <Columns>
+            <PropertyColumn Property="p => p.Name" Title="Name" InitialDirection="SortDirection.Ascending">
+                <CellTemplate>
+                    <MudText Typo="Typo.body2"><b>@context.Item.Name</b></MudText>
+                    @if (!string.IsNullOrEmpty(context.Item.Description))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Item.Description</MudText>
+                    }
+                    @if (!string.IsNullOrEmpty(context.Item.Manufacturer) || !string.IsNullOrEmpty(context.Item.PartNumber))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="display:block">@context.Item.Manufacturer @context.Item.PartNumber</MudText>
+                    }
+                </CellTemplate>
+            </PropertyColumn>
+            <PropertyColumn Property="p => p.Value" Title="Wert" />
+            <PropertyColumn Property="p => p.Package" Title="Bauform" />
+            <TemplateColumn T="Part" Title="Kategorie" SortBy="p => CategoryPath(p) ?? string.Empty">
+                <CellTemplate><MudText Typo="Typo.body2">@CategoryPath(context.Item)</MudText></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="Part" Title="Lagerort" SortBy="p => LocationPath(p) ?? string.Empty">
+                <CellTemplate><MudText Typo="Typo.body2">@LocationPath(context.Item)</MudText></CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="Part" Title="Menge" SortBy="p => p.Quantity" HeaderStyle="text-align: right" CellStyle="text-align: right; white-space: nowrap">
+                <CellTemplate>
+                    <div class="d-inline-flex align-center" @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Disabled="@(context.Item.Quantity == 0)"
+                                       OnClick="() => ChangeQuantityAsync(context.Item, -1)" aria-label="Eins entnehmen" />
+                        <MudChip T="string" Size="Size.Small" Class="qty-value" Color="QuantityColor(context.Item)"
+                                 Variant="@(QuantityColor(context.Item) == Color.Default ? Variant.Outlined : Variant.Filled)">
+                            @context.Item.Quantity
+                        </MudChip>
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                       OnClick="() => ChangeQuantityAsync(context.Item, +1)" aria-label="Eins hinzufügen" />
+                    </div>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+        <NoRecordsContent>
             @if (parts.Count == 0)
             {
-                <span>Noch keine Bauteile eingelagert. <a href="parts/new">Jetzt das erste anlegen</a>.</span>
+                <MudText>Noch keine Bauteile eingelagert. <MudLink Href="parts/new">Jetzt das erste anlegen</MudLink>.</MudText>
             }
             else
             {
-                <span>Keine Treffer für diese Filter.</span>
+                <MudText>Keine Treffer für diese Filter.</MudText>
             }
-        </div>
-    }
-    else
-    {
-        <div class="table-responsive">
-            <table class="table table-sm table-hover align-middle parts-table">
-                <thead>
-                    <tr>
-                        <SortHeader Title="Name" Key="name" Current="sortKey" Desc="sortDesc" OnSort="SortBy" />
-                        <SortHeader Title="Wert" Key="value" Current="sortKey" Desc="sortDesc" OnSort="SortBy" />
-                        <SortHeader Title="Bauform" Key="package" Current="sortKey" Desc="sortDesc" OnSort="SortBy" CssClass="d-none d-md-table-cell" />
-                        <SortHeader Title="Kategorie" Key="category" Current="sortKey" Desc="sortDesc" OnSort="SortBy" CssClass="d-none d-lg-table-cell" />
-                        <SortHeader Title="Lagerort" Key="location" Current="sortKey" Desc="sortDesc" OnSort="SortBy" />
-                        <SortHeader Title="Menge" Key="qty" Current="sortKey" Desc="sortDesc" OnSort="SortBy" CssClass="text-end" />
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var p in filtered)
-                    {
-                        <tr @key="p.Id">
-                            <td>
-                                <a href="@($"parts/{p.Id}")" class="fw-semibold">@p.Name</a>
-                                @if (!string.IsNullOrEmpty(p.Description))
-                                {
-                                    <div class="small text-muted text-truncate" style="max-width: 24rem">@p.Description</div>
-                                }
-                                @if (!string.IsNullOrEmpty(p.Manufacturer) || !string.IsNullOrEmpty(p.PartNumber))
-                                {
-                                    <div class="small text-muted">@p.Manufacturer @p.PartNumber</div>
-                                }
-                            </td>
-                            <td>@p.Value</td>
-                            <td class="d-none d-md-table-cell">@p.Package</td>
-                            <td class="d-none d-lg-table-cell small">@CategoryPath(p)</td>
-                            <td class="small">@LocationPath(p)</td>
-                            <td class="text-end text-nowrap">
-                                <button class="btn btn-sm btn-outline-secondary qty-btn" title="Eins entnehmen"
-                                        disabled="@(p.Quantity == 0)" @onclick="() => ChangeQuantityAsync(p, -1)">−</button>
-                                <span class="badge qty-badge @(p.IsLowStock ? "text-bg-danger" : p.Quantity == 0 ? "text-bg-warning" : "text-bg-light border")"
-                                      title="@(p.MinQuantity > 0 ? $"Mindestbestand: {p.MinQuantity}" : null)">@p.Quantity</span>
-                                <button class="btn btn-sm btn-outline-secondary qty-btn" title="Eins hinzufügen"
-                                        @onclick="() => ChangeQuantityAsync(p, +1)">+</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
+        </NoRecordsContent>
+        <PagerContent>
+            <MudDataGridPager T="Part" PageSizeOptions="[25, 50, 100, 250]" RowsPerPageString="Zeilen pro Seite:"
+                              InfoFormat="{first_item}–{last_item} von {all_items}" />
+        </PagerContent>
+    </MudDataGrid>
 }
 
 @code {
@@ -134,8 +139,6 @@ else
     private int? categoryId;
     private int? locationId;
     private bool lowOnly;
-    private string sortKey = "name";
-    private bool sortDesc;
 
     private bool IsFiltered => search.Length > 0 || categoryId is not null || locationId is not null || lowOnly;
 
@@ -164,6 +167,16 @@ else
 
     private string? CategoryPath(Part p) => p.CategoryId is int id ? categoryPaths.GetValueOrDefault(id) : null;
     private string? LocationPath(Part p) => p.StorageLocationId is int id ? locationPaths.GetValueOrDefault(id) : null;
+    private string CategoryLabel(int? id) => id is int i ? categoryPaths.GetValueOrDefault(i) ?? "" : "";
+    private string LocationLabel(int? id) => id is int i ? locationPaths.GetValueOrDefault(i) ?? "" : "";
+
+    private static Color QuantityColor(Part p) =>
+        p.IsLowStock ? Color.Error : p.Quantity == 0 ? Color.Warning : Color.Default;
+
+    private void OnSearchChanged(string? value) { search = value ?? ""; ApplyFilter(); }
+    private void OnCategoryChanged(int? value) { categoryId = value; ApplyFilter(); }
+    private void OnLocationChanged(int? value) { locationId = value; ApplyFilter(); }
+    private void OnLowOnlyChanged(bool value) { lowOnly = value; ApplyFilter(); }
 
     private void ApplyFilter()
     {
@@ -197,29 +210,7 @@ else
             });
         }
 
-        filtered = Sort(q).ToList();
-    }
-
-    private IEnumerable<Part> Sort(IEnumerable<Part> q)
-    {
-        var cmp = StringComparer.CurrentCultureIgnoreCase;
-        IOrderedEnumerable<Part> ordered = sortKey switch
-        {
-            "value" => sortDesc ? q.OrderByDescending(p => p.Value, cmp) : q.OrderBy(p => p.Value, cmp),
-            "package" => sortDesc ? q.OrderByDescending(p => p.Package, cmp) : q.OrderBy(p => p.Package, cmp),
-            "category" => sortDesc ? q.OrderByDescending(CategoryPath, cmp) : q.OrderBy(CategoryPath, cmp),
-            "location" => sortDesc ? q.OrderByDescending(LocationPath, cmp) : q.OrderBy(LocationPath, cmp),
-            "qty" => sortDesc ? q.OrderByDescending(p => p.Quantity) : q.OrderBy(p => p.Quantity),
-            _ => sortDesc ? q.OrderByDescending(p => p.Name, cmp) : q.OrderBy(p => p.Name, cmp),
-        };
-        return ordered.ThenBy(p => p.Name, cmp);
-    }
-
-    private void SortBy(string key)
-    {
-        sortDesc = sortKey == key && !sortDesc;
-        sortKey = key;
-        ApplyFilter();
+        filtered = q.ToList();
     }
 
     private void ResetFilter()
@@ -230,6 +221,8 @@ else
         lowOnly = false;
         ApplyFilter();
     }
+
+    private void OnRowClick(DataGridRowClickEventArgs<Part> args) => Nav.NavigateTo($"parts/{args.Item.Id}");
 
     private async Task ChangeQuantityAsync(Part part, int delta)
     {

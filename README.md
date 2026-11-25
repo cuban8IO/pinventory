@@ -1,6 +1,6 @@
 # 📌 Pinventory
 
-Kleine Lagerverwaltung für Elektronik-Bauteile – Blazor Web-App (.NET 10) mit SQLite.
+Kleine Lagerverwaltung für Elektronik-Bauteile – Blazor Web-App (.NET 10) mit [MudBlazor](https://mudblazor.com) und SQLite.
 
 ## Funktionen
 
@@ -11,6 +11,7 @@ Kleine Lagerverwaltung für Elektronik-Bauteile – Blazor Web-App (.NET 10) mit
 - Menge direkt in der Liste per **−/+** anpassen
 - „Speichern & nächstes“ und „Duplizieren“ zum schnellen Erfassen ganzer Sortimente
 - Übersicht mit Kennzahlen, Nachbestell-Liste und zuletzt geänderten Bauteilen
+- Helles und dunkles Design (startet passend zum Betriebssystem)
 
 ## Starten
 

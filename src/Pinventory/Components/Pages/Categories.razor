@@ -2,9 +2,11 @@
 
 <PageTitle>Kategorien · Pinventory</PageTitle>
 
-<h1 class="h3 mb-3">Kategorien</h1>
-<p class="text-muted">Kategorien lassen sich beliebig verschachteln, z.B. <em>Halbleiter › Transistoren</em>.
-    Ein Klick auf den Namen zeigt alle Bauteile darin (inkl. Unterkategorien).</p>
+<MudText Typo="Typo.h4" Class="mb-1">Kategorien</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Kategorien lassen sich beliebig verschachteln, z.B. <i>Halbleiter › Transistoren</i>.
+    Ein Klick auf den Namen zeigt alle Bauteile darin (inkl. Unterkategorien).
+</MudText>
 
 <TreeManager TNode="Category" Singular="Kategorie" FilterQueryName="category" LoadCounts="LoadCounts" />
 

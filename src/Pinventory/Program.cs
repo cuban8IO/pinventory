@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using MudBlazor;
+using MudBlazor.Services;
 using Pinventory.Components;
 using Pinventory.Data;
 
@@ -6,6 +8,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
+    config.SnackbarConfiguration.VisibleStateDuration = 3000;
+    config.SnackbarConfiguration.ShowCloseIcon = true;
+});
 
 builder.Services.AddDbContextFactory<PinventoryDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Pinventory")));

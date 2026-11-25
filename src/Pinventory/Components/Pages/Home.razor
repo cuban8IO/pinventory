@@ -4,83 +4,96 @@
 
 <PageTitle>Pinventory</PageTitle>
 
-<h1 class="h3 mb-3">Übersicht</h1>
+<MudText Typo="Typo.h4" Class="mb-4">Übersicht</MudText>
 
-<form class="mb-4" @onsubmit="Search" style="max-width: 40rem">
-    <div class="input-group input-group-lg">
-        <input class="form-control" type="search" placeholder="Was suchst du? z.B. 10k 0805, BC547, ESP32 …"
-               @bind="search" autofocus />
-        <button class="btn btn-primary" type="submit">Suchen</button>
-    </div>
+<form @onsubmit="Search" style="max-width: 44rem" class="mb-6">
+    <MudTextField @bind-Value="search" Variant="Variant.Outlined" Placeholder="Was suchst du? z.B. 10k 0805, BC547, ESP32 …"
+                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" OnAdornmentClick="Search"
+                  Immediate="true" AutoFocus="true" />
 </form>
 
 @if (loaded)
 {
-    <div class="row g-3 mb-4">
-        <StatCard Label="Bauteil-Typen" Value="@partCount.ToString("N0")" Href="parts" />
-        <StatCard Label="Stück gesamt" Value="@totalQuantity.ToString("N0")" Href="parts" />
-        <StatCard Label="Nachbestellen" Value="@lowStock.Count.ToString()" Href="parts?low=true" Warn="@(lowStock.Count > 0)" />
-        <StatCard Label="Lagerorte" Value="@locationCount.ToString()" Href="locations" />
-    </div>
+    <MudGrid Spacing="3" Class="mb-6">
+        <StatTile Label="Bauteil-Typen" Value="@partCount.ToString("N0")" Icon="@Icons.Material.Filled.Inventory2" Href="parts" />
+        <StatTile Label="Stück gesamt" Value="@totalQuantity.ToString("N0")" Icon="@Icons.Material.Filled.Numbers" Href="parts" />
+        <StatTile Label="Nachbestellen" Value="@lowStock.Count.ToString()" Icon="@Icons.Material.Filled.ShoppingCart"
+                  Href="parts?low=true" Color="@(lowStock.Count > 0 ? Color.Error : Color.Default)" />
+        <StatTile Label="Lagerorte" Value="@locationCount.ToString()" Icon="@Icons.Material.Filled.Warehouse" Href="locations" />
+    </MudGrid>
 
-    <div class="row g-4">
-        <div class="col-lg-7">
-            <h2 class="h5">Kategorien</h2>
-            <div class="row g-2">
+    <MudGrid Spacing="4">
+        <MudItem xs="12" lg="7">
+            <MudText Typo="Typo.h6" Class="mb-2">Kategorien</MudText>
+            <MudGrid Spacing="2">
                 @foreach (var c in topCategories)
                 {
-                    <div class="col-sm-6">
-                        <a href="@($"parts?category={c.Category.Id}")" class="card category-card text-decoration-none h-100">
-                            <div class="card-body py-2">
-                                <div class="d-flex justify-content-between">
-                                    <span class="fw-semibold">@c.Category.Name</span>
-                                    <span class="badge text-bg-secondary align-self-center">@c.Count</span>
-                                </div>
-                                @if (c.Children.Count > 0)
-                                {
-                                    <div class="small text-muted text-truncate">@string.Join(" · ", c.Children)</div>
-                                }
+                    <MudItem xs="12" sm="6">
+                        <MudPaper Class="category-card pa-3" Outlined="true" @onclick="@(() => Nav.NavigateTo($"parts?category={c.Category.Id}"))">
+                            <div class="d-flex justify-space-between align-center">
+                                <MudText Typo="Typo.subtitle1"><b>@c.Category.Name</b></MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@(c.Count > 0 ? Color.Primary : Color.Default)">@c.Count</MudChip>
                             </div>
-                        </a>
-                    </div>
+                            @if (c.Children.Count > 0)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+                                    @string.Join(" · ", c.Children)
+                                </MudText>
+                            }
+                        </MudPaper>
+                    </MudItem>
                 }
-            </div>
-        </div>
+            </MudGrid>
+        </MudItem>
 
-        <div class="col-lg-5">
+        <MudItem xs="12" lg="5">
             @if (lowStock.Count > 0)
             {
-                <h2 class="h5">Nachbestellen</h2>
-                <ul class="list-group mb-4">
-                    @foreach (var p in lowStock.Take(10))
-                    {
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <a href="@($"parts/{p.Id}")">@p.Name <span class="text-muted small">@p.Value @p.Package</span></a>
-                            <span class="badge text-bg-danger">@p.Quantity / @p.MinQuantity</span>
-                        </li>
-                    }
-                </ul>
+                <MudText Typo="Typo.h6" Class="mb-2">Nachbestellen</MudText>
+                <MudPaper Outlined="true" Class="mb-6">
+                    <MudList T="Part" Dense="true">
+                        @foreach (var p in lowStock.Take(10))
+                        {
+                            <MudListItem T="Part" Href="@($"parts/{p.Id}")" Icon="@Icons.Material.Filled.Warning" IconColor="Color.Error">
+                                <div class="d-flex justify-space-between align-center">
+                                    <span>@p.Name <MudText Typo="Typo.caption" Inline="true" Class="mud-text-secondary">@p.Value @p.Package</MudText></span>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error">@p.Quantity / @p.MinQuantity</MudChip>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudPaper>
             }
 
-            <h2 class="h5">Zuletzt geändert</h2>
+            <MudText Typo="Typo.h6" Class="mb-2">Zuletzt geändert</MudText>
             @if (recent.Count == 0)
             {
-                <p class="text-muted">Noch nichts eingelagert. <a href="parts/new">Erstes Bauteil anlegen</a></p>
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    Noch nichts eingelagert. <MudLink Href="parts/new">Erstes Bauteil anlegen</MudLink>
+                </MudAlert>
             }
             else
             {
-                <ul class="list-group">
-                    @foreach (var p in recent)
-                    {
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <a href="@($"parts/{p.Id}")">@p.Name <span class="text-muted small">@p.Value @p.Package</span></a>
-                            <span class="small text-muted">@p.Quantity Stk.</span>
-                        </li>
-                    }
-                </ul>
+                <MudPaper Outlined="true">
+                    <MudList T="Part" Dense="true">
+                        @foreach (var p in recent)
+                        {
+                            <MudListItem T="Part" Href="@($"parts/{p.Id}")">
+                                <div class="d-flex justify-space-between align-center">
+                                    <span>@p.Name <MudText Typo="Typo.caption" Inline="true" Class="mud-text-secondary">@p.Value @p.Package</MudText></span>
+                                    <MudText Typo="Typo.body2" Class="mud-text-secondary">@p.Quantity Stk.</MudText>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudPaper>
             }
-        </div>
-    </div>
+        </MudItem>
+    </MudGrid>
+}
+else
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
 
 @code {

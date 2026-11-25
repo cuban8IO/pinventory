@@ -2,135 +2,133 @@
 @page "/parts/{Id:int}"
 @inject IDbContextFactory<PinventoryDbContext> DbFactory
 @inject NavigationManager Nav
-@inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
 
 <PageTitle>@(IsNew ? "Neues Bauteil" : model?.Name) · Pinventory</PageTitle>
 
-<div class="mb-3">
-    <a href="parts" class="small">← zur Bauteilliste</a>
-    <h1 class="h3 mt-1">@(IsNew ? "Neues Bauteil einlagern" : "Bauteil bearbeiten")</h1>
-</div>
+<MudButton Href="parts" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Class="mb-1">
+    Bauteilliste
+</MudButton>
+<MudText Typo="Typo.h4" Class="mb-4">@(IsNew ? "Neues Bauteil einlagern" : "Bauteil bearbeiten")</MudText>
 
 @if (notFound)
 {
-    <div class="alert alert-warning">Dieses Bauteil gibt es nicht (mehr).</div>
+    <MudAlert Severity="Severity.Warning">Dieses Bauteil gibt es nicht (mehr).</MudAlert>
 }
 else if (model is null)
 {
-    <p><em>Lade …</em></p>
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
 else
 {
-    @if (savedMessage is not null)
-    {
-        <div class="alert alert-success py-2">@savedMessage</div>
-    }
-
     <EditForm Model="model" OnValidSubmit="SaveAsync">
         <DataAnnotationsValidator />
-        <ValidationSummary class="text-danger" />
 
-        <div class="row g-3" style="max-width: 60rem">
-            <div class="col-md-8">
-                <label class="form-label">Name *</label>
-                <InputText class="form-control" @bind-Value="model.Name" placeholder="z.B. Widerstand 10kΩ, BC547, ATmega328P" autofocus />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Kategorie</label>
-                <InputSelect class="form-select" @bind-Value="model.CategoryId">
-                    <option value="">– keine –</option>
-                    @foreach (var c in categories)
+        <MudPaper Outlined="true" Class="pa-4" Style="max-width: 64rem">
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="8">
+                    <MudTextField @bind-Value="model.Name" For="() => model.Name" Label="Name" Required="true"
+                                  Placeholder="z.B. Widerstand 10kΩ, BC547, ATmega328P" Variant="Variant.Outlined" AutoFocus="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="int?" @bind-Value="model.CategoryId" Label="Kategorie" Variant="Variant.Outlined"
+                               Clearable="true" Dense="true" ToStringFunc="id => Label(categories, id)">
+                        @foreach (var c in categories)
+                        {
+                            <MudSelectItem T="int?" Value="c.Node.Id">
+                                <span style="padding-left: @(c.Depth * 1.25)rem">@c.Node.Name</span>
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" md="4">
+                    <MudAutocomplete T="string" @bind-Value="model.Value" Label="Wert" Placeholder="10kΩ, 100nF, 3,3V"
+                                     SearchFunc="(t, ct) => Suggest(knownValues, t)" CoerceText="false" CoerceValue="true"
+                                     Variant="Variant.Outlined" MaxItems="20" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudAutocomplete T="string" @bind-Value="model.Package" Label="Bauform / Gehäuse" Placeholder="0805, TO-92, DIP-8"
+                                     SearchFunc="(t, ct) => Suggest(knownPackages, t)" CoerceText="false" CoerceValue="true"
+                                     Variant="Variant.Outlined" MaxItems="20" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="int?" @bind-Value="model.StorageLocationId" Label="Lagerort" Variant="Variant.Outlined"
+                               Clearable="true" Dense="true" ToStringFunc="id => Label(locations, id)"
+                               HelperText="@(locations.Count == 0 ? "Noch keine Lagerorte angelegt" : null)">
+                        @foreach (var l in locations)
+                        {
+                            <MudSelectItem T="int?" Value="l.Node.Id">
+                                <span style="padding-left: @(l.Depth * 1.25)rem">@l.Node.Name</span>
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="6" md="3">
+                    <MudNumericField T="int" @bind-Value="model.Quantity" For="() => model.Quantity" Label="Menge" Min="0" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudNumericField T="int" @bind-Value="model.MinQuantity" For="() => model.MinQuantity" Label="Mindestbestand" Min="0"
+                                     HelperText="0 = keine Warnung" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudAutocomplete T="string" @bind-Value="model.Manufacturer" Label="Hersteller"
+                                     SearchFunc="(t, ct) => Suggest(knownManufacturers, t)" CoerceText="false" CoerceValue="true"
+                                     Variant="Variant.Outlined" MaxItems="20" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudTextField @bind-Value="model.PartNumber" For="() => model.PartNumber" Label="Teilenummer (MPN)" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="model.Description" For="() => model.Description" Label="Kurzbeschreibung"
+                                  Placeholder="z.B. NPN-Transistor 45V 100mA" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="model.DatasheetUrl" For="() => model.DatasheetUrl" Label="Datenblatt-Link" Placeholder="https://…"
+                                  Variant="Variant.Outlined" Immediate="true"
+                                  Adornment="@(string.IsNullOrWhiteSpace(model.DatasheetUrl) ? Adornment.None : Adornment.End)"
+                                  AdornmentIcon="@Icons.Material.Filled.OpenInNew" AdornmentAriaLabel="Datenblatt öffnen"
+                                  OnAdornmentClick="OpenDatasheet" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="model.Notes" For="() => model.Notes" Label="Notizen" Lines="3" Sizing="InputSizing.Auto" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex flex-wrap gap-2">
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save" OnClick="() => addAnother = false">
+                        Speichern
+                    </MudButton>
+                    <MudTooltip Text="Speichert und öffnet ein neues Formular mit gleicher Kategorie und gleichem Lagerort">
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.PlaylistAdd" OnClick="() => addAnother = true">
+                            Speichern &amp; nächstes
+                        </MudButton>
+                    </MudTooltip>
+                    <MudButton Href="parts" Variant="Variant.Text">Abbrechen</MudButton>
+                    @if (!IsNew)
                     {
-                        <option value="@c.Node.Id">@c.Path</option>
+                        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="Duplicate">Duplizieren</MudButton>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">
+                            Löschen
+                        </MudButton>
                     }
-                </InputSelect>
-            </div>
-
-            <div class="col-md-4">
-                <label class="form-label">Wert</label>
-                <InputText class="form-control" @bind-Value="model.Value" placeholder="10kΩ, 100nF, 3,3V" list="dl-values" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Bauform / Gehäuse</label>
-                <InputText class="form-control" @bind-Value="model.Package" placeholder="0805, TO-92, DIP-8" list="dl-packages" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Lagerort</label>
-                <InputSelect class="form-select" @bind-Value="model.StorageLocationId">
-                    <option value="">– keiner –</option>
-                    @foreach (var l in locations)
-                    {
-                        <option value="@l.Node.Id">@l.Path</option>
-                    }
-                </InputSelect>
-                @if (locations.Count == 0)
-                {
-                    <div class="form-text"><a href="locations">Lagerorte anlegen</a></div>
-                }
-            </div>
-
-            <div class="col-md-3">
-                <label class="form-label">Menge</label>
-                <InputNumber class="form-control" @bind-Value="model.Quantity" min="0" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Mindestbestand</label>
-                <InputNumber class="form-control" @bind-Value="model.MinQuantity" min="0" />
-                <div class="form-text">0 = keine Warnung</div>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Hersteller</label>
-                <InputText class="form-control" @bind-Value="model.Manufacturer" list="dl-manufacturers" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Teilenummer (MPN)</label>
-                <InputText class="form-control" @bind-Value="model.PartNumber" />
-            </div>
-
-            <div class="col-12">
-                <label class="form-label">Kurzbeschreibung</label>
-                <InputText class="form-control" @bind-Value="model.Description" placeholder="z.B. NPN-Transistor 45V 100mA" />
-            </div>
-            <div class="col-12">
-                <label class="form-label">Datenblatt-Link</label>
-                <div class="input-group">
-                    <InputText class="form-control" @bind-Value="model.DatasheetUrl" placeholder="https://…" />
-                    @if (!string.IsNullOrWhiteSpace(model.DatasheetUrl))
-                    {
-                        <a class="btn btn-outline-secondary" href="@model.DatasheetUrl" target="_blank" rel="noopener">Öffnen</a>
-                    }
-                </div>
-            </div>
-            <div class="col-12">
-                <label class="form-label">Notizen</label>
-                <InputTextArea class="form-control" rows="3" @bind-Value="model.Notes" />
-            </div>
-
-            <div class="col-12 d-flex flex-wrap gap-2">
-                <button type="submit" class="btn btn-primary" @onclick="() => addAnother = false">Speichern</button>
-                <button type="submit" class="btn btn-outline-primary" @onclick="() => addAnother = true"
-                        title="Speichert und öffnet ein neues Formular mit gleicher Kategorie und gleichem Lagerort">
-                    Speichern &amp; nächstes
-                </button>
-                <a href="parts" class="btn btn-outline-secondary">Abbrechen</a>
+                </MudItem>
                 @if (!IsNew)
                 {
-                    <button type="button" class="btn btn-outline-secondary" @onclick="Duplicate">Duplizieren</button>
-                    <button type="button" class="btn btn-outline-danger ms-auto" @onclick="DeleteAsync">Löschen</button>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            Angelegt @model.CreatedAt.ToLocalTime().ToString("g") · zuletzt geändert @model.UpdatedAt.ToLocalTime().ToString("g")
+                        </MudText>
+                    </MudItem>
                 }
-            </div>
-            @if (!IsNew)
-            {
-                <div class="col-12 small text-muted">
-                    Angelegt @model.CreatedAt.ToLocalTime().ToString("g") · zuletzt geändert @model.UpdatedAt.ToLocalTime().ToString("g")
-                </div>
-            }
-        </div>
+            </MudGrid>
+        </MudPaper>
     </EditForm>
-
-    <datalist id="dl-values">@foreach (var v in knownValues) { <option value="@v"></option> }</datalist>
-    <datalist id="dl-packages">@foreach (var v in knownPackages) { <option value="@v"></option> }</datalist>
-    <datalist id="dl-manufacturers">@foreach (var v in knownManufacturers) { <option value="@v"></option> }</datalist>
 }
 
 @code {
@@ -140,15 +138,15 @@ else
     [SupplyParameterFromQuery(Name = "category")] public int? PresetCategory { get; set; }
     [SupplyParameterFromQuery(Name = "location")] public int? PresetLocation { get; set; }
 
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
     private bool IsNew => Id is null;
     private Part? model;
     private bool notFound;
     private bool addAnother;
-    private string? savedMessage;
 
-    // Werte, die über einen Seitenwechsel hinweg übergeben werden.
+    // Wird über einen Seitenwechsel hinweg übergeben (Duplizieren).
     private Part? pendingCopy;
-    private string? pendingMessage;
 
     private List<TreeEntry<Category>> categories = [];
     private List<TreeEntry<StorageLocation>> locations = [];
@@ -159,8 +157,6 @@ else
     protected override async Task OnParametersSetAsync()
     {
         notFound = false;
-        savedMessage = pendingMessage;
-        pendingMessage = null;
         await using var db = await DbFactory.CreateDbContextAsync();
 
         categories = Tree.Flatten(await db.Categories.AsNoTracking().ToListAsync());
@@ -185,12 +181,26 @@ else
         }
     }
 
+    private static string Label<T>(List<TreeEntry<T>> entries, int? id) where T : ITreeNode =>
+        id is int i ? entries.FirstOrDefault(e => e.Node.Id == i)?.Path ?? "" : "";
+
     private static List<string> Distinct(IEnumerable<string?> values) =>
         values.Where(v => !string.IsNullOrWhiteSpace(v)).Select(v => v!.Trim())
             .Distinct(StringComparer.CurrentCultureIgnoreCase)
             .Order(StringComparer.CurrentCultureIgnoreCase).ToList();
 
+    private static Task<IEnumerable<string>> Suggest(List<string> source, string? text) =>
+        Task.FromResult(string.IsNullOrWhiteSpace(text)
+            ? source.AsEnumerable()
+            : source.Where(v => v.Contains(text, StringComparison.CurrentCultureIgnoreCase)));
+
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private async Task OpenDatasheet()
+    {
+        if (!string.IsNullOrWhiteSpace(model?.DatasheetUrl))
+            await JS.InvokeVoidAsync("open", model.DatasheetUrl, "_blank", "noopener");
+    }
 
     private async Task SaveAsync()
     {
@@ -209,31 +219,27 @@ else
         else db.Parts.Update(model);
         await db.SaveChangesAsync();
 
-        if (addAnother)
+        Snackbar.Add($"\"{model.Name}\" gespeichert.", Severity.Success);
+
+        if (!addAnother)
         {
-            var message = $"\"{model.Name}\" gespeichert. Nächstes Bauteil:";
-            if (IsNew)
-            {
-                // Bereits auf "Neu" → Formular direkt zurücksetzen, Kategorie & Lagerort behalten.
-                model = new Part { CategoryId = model.CategoryId, StorageLocationId = model.StorageLocationId };
-                savedMessage = message;
-            }
-            else
-            {
-                pendingMessage = message;
-                Nav.NavigateTo($"parts/new?category={model.CategoryId}&location={model.StorageLocationId}");
-            }
+            Nav.NavigateTo("parts");
+        }
+        else if (IsNew)
+        {
+            // Bereits auf "Neu" → Formular direkt zurücksetzen, Kategorie & Lagerort behalten.
+            model = new Part { CategoryId = model.CategoryId, StorageLocationId = model.StorageLocationId };
         }
         else
         {
-            Nav.NavigateTo("parts");
+            Nav.NavigateTo($"parts/new?category={model.CategoryId}&location={model.StorageLocationId}");
         }
     }
 
     private void Duplicate()
     {
         if (model is null) return;
-        var copy = new Part
+        pendingCopy = new Part
         {
             Name = model.Name + " (Kopie)",
             Description = model.Description,
@@ -247,18 +253,22 @@ else
             CategoryId = model.CategoryId,
             StorageLocationId = model.StorageLocationId,
         };
-        pendingCopy = copy;
-        pendingMessage = "Kopie – Werte anpassen und speichern.";
+        Snackbar.Add("Kopie erstellt – Werte anpassen und speichern.", Severity.Info);
         Nav.NavigateTo("parts/new");
     }
 
     private async Task DeleteAsync()
     {
         if (model is null || IsNew) return;
-        if (!await JS.InvokeAsync<bool>("confirm", $"\"{model.Name}\" wirklich löschen?")) return;
+        var confirmed = await Dialogs.ShowMessageBoxAsync(
+            "Bauteil löschen",
+            $"\"{model.Name}\" wirklich löschen? Das lässt sich nicht rückgängig machen.",
+            yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true) return;
 
         await using var db = await DbFactory.CreateDbContextAsync();
         await db.Parts.Where(p => p.Id == model.Id).ExecuteDeleteAsync();
+        Snackbar.Add($"\"{model.Name}\" gelöscht.", Severity.Info);
         Nav.NavigateTo("parts");
     }
 }

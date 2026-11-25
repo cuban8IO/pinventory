@@ -1,44 +1,48 @@
 @typeparam TNode where TNode : class, ITreeNode, new()
 @inject IDbContextFactory<PinventoryDbContext> DbFactory
-@inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
 
-<div class="d-flex flex-wrap align-items-end gap-2 mb-3">
-    <div>
-        <label class="form-label small mb-1">Neue @Singular</label>
-        <input class="form-control" placeholder="Name" @bind="newName" @bind:event="oninput"
-               @onkeydown="@(e => e.Key == "Enter" ? AddAsync() : Task.CompletedTask)" />
-    </div>
-    <div>
-        <label class="form-label small mb-1">unterhalb von</label>
-        <select class="form-select" @bind="newParentId">
-            <option value="">– oberste Ebene –</option>
-            @foreach (var e in entries)
-            {
-                <option value="@e.Node.Id">@e.Path</option>
-            }
-        </select>
-    </div>
-    <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(newName)" @onclick="AddAsync">Hinzufügen</button>
-</div>
-
-@if (error is not null)
-{
-    <div class="alert alert-danger py-2">@error</div>
-}
+<MudPaper Outlined="true" Class="pa-3 mb-4">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" md="5">
+            <MudTextField @bind-Value="newName" Label="@($"Neue/r {Singular}")" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" OnKeyDown="OnNewKeyDown" @ref="newNameField" />
+        </MudItem>
+        <MudItem xs="12" md="5">
+            <MudSelect T="int?" @bind-Value="newParentId" Label="unterhalb von" Placeholder="oberste Ebene" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Clearable="true" Dense="true" ToStringFunc="PathOf">
+                @foreach (var e in entries)
+                {
+                    <MudSelectItem T="int?" Value="e.Node.Id">
+                        <span style="padding-left: @(e.Depth * 1.25)rem">@e.Node.Name</span>
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.Add"
+                       Disabled="@string.IsNullOrWhiteSpace(newName)" OnClick="AddAsync">
+                Hinzufügen
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
 
 @if (entries.Count == 0)
 {
-    <p class="text-muted">Noch keine Einträge vorhanden.</p>
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Noch keine Einträge vorhanden.</MudAlert>
 }
 else
 {
-    <table class="table table-sm table-hover align-middle tree-table">
+    <MudSimpleTable Dense="true" Hover="true" Outlined="true" Elevation="0">
         <thead>
             <tr>
                 <th>Name</th>
-                <th class="d-none d-md-table-cell">Beschreibung</th>
-                <th class="text-end">Bauteile</th>
-                <th class="text-end" style="width: 1%"></th>
+                <th>Beschreibung</th>
+                <th style="text-align: right">Bauteile</th>
+                <th style="width: 1%"></th>
             </tr>
         </thead>
         <tbody>
@@ -47,52 +51,68 @@ else
                 var node = e.Node;
                 if (editId == node.Id)
                 {
-                    <tr class="table-active">
-                        <td colspan="2">
+                    <tr>
+                        <td colspan="3">
                             <div class="d-flex flex-wrap gap-2">
-                                <input class="form-control form-control-sm" style="max-width: 16rem" @bind="editName" />
-                                <input class="form-control form-control-sm" style="max-width: 20rem" placeholder="Beschreibung" @bind="editDescription" />
-                                <select class="form-select form-select-sm" style="max-width: 20rem" @bind="editParentId">
-                                    <option value="">– oberste Ebene –</option>
+                                <MudTextField @bind-Value="editName" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 12rem" AutoFocus="true" />
+                                <MudTextField @bind-Value="editDescription" Label="Beschreibung" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 16rem" />
+                                <MudSelect T="int?" @bind-Value="editParentId" Label="unterhalb von" Placeholder="oberste Ebene" Variant="Variant.Outlined"
+                                           Margin="Margin.Dense" Clearable="true" Dense="true" ToStringFunc="PathOf" Style="min-width: 16rem">
                                     @foreach (var p in entries.Where(x => !editExcluded.Contains(x.Node.Id)))
                                     {
-                                        <option value="@p.Node.Id">@p.Path</option>
+                                        <MudSelectItem T="int?" Value="p.Node.Id">
+                                            <span style="padding-left: @(p.Depth * 1.25)rem">@p.Node.Name</span>
+                                        </MudSelectItem>
                                     }
-                                </select>
+                                </MudSelect>
                             </div>
                         </td>
-                        <td></td>
-                        <td class="text-nowrap text-end">
-                            <button class="btn btn-sm btn-success" @onclick="SaveEditAsync">Speichern</button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => editId = null">Abbrechen</button>
+                        <td style="white-space: nowrap">
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" OnClick="SaveEditAsync" aria-label="Speichern" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="() => editId = null" aria-label="Abbrechen" />
                         </td>
                     </tr>
                 }
                 else
                 {
+                    var total = TotalCount(node.Id);
                     <tr>
-                        <td style="padding-left: @(0.5 + e.Depth * 1.5)rem">
-                            @if (e.Depth > 0) { <span class="text-muted me-1">└</span> }
-                            <a href="@($"parts?{FilterQueryName}={node.Id}")" class="@(e.Depth == 0 ? "fw-semibold" : "")">@node.Name</a>
+                        <td style="padding-left: @(1 + e.Depth * 1.75)rem">
+                            <div class="d-flex align-center gap-1">
+                                @if (e.Depth > 0)
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.SubdirectoryArrowRight" Size="Size.Small" Class="mud-text-secondary" />
+                                }
+                                <MudLink Href="@($"parts?{FilterQueryName}={node.Id}")" Typo="@(e.Depth == 0 ? Typo.subtitle2 : Typo.body2)">
+                                    @node.Name
+                                </MudLink>
+                            </div>
                         </td>
-                        <td class="d-none d-md-table-cell text-muted small">@node.Description</td>
-                        <td class="text-end">
-                            @{ var total = TotalCount(node.Id); var direct = directCounts.GetValueOrDefault(node.Id); }
+                        <td><MudText Typo="Typo.body2" Class="mud-text-secondary">@node.Description</MudText></td>
+                        <td style="text-align: right">
                             @if (total > 0)
                             {
-                                <span class="badge text-bg-secondary" title="@direct direkt, @total inkl. Unterebenen">@total</span>
+                                <MudTooltip Text="@($"{directCounts.GetValueOrDefault(node.Id)} direkt, {total} inkl. Unterebenen")">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@total</MudChip>
+                                </MudTooltip>
                             }
                         </td>
-                        <td class="text-nowrap text-end">
-                            <button class="btn btn-sm btn-outline-secondary" title="Unterebene anlegen" @onclick="() => PrepareChild(node.Id)">+</button>
-                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(node)">Bearbeiten</button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(node)">Löschen</button>
+                        <td style="white-space: nowrap">
+                            <MudTooltip Text="Unterebene anlegen">
+                                <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" OnClick="() => PrepareChildAsync(node.Id)" />
+                            </MudTooltip>
+                            <MudTooltip Text="Bearbeiten">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => StartEdit(node)" />
+                            </MudTooltip>
+                            <MudTooltip Text="Löschen">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(node)" />
+                            </MudTooltip>
                         </td>
                     </tr>
                 }
             }
         </tbody>
-    </table>
+    </MudSimpleTable>
 }
 
 @code {
@@ -107,9 +127,10 @@ else
 
     private List<TNode> nodes = [];
     private List<TreeEntry<TNode>> entries = [];
+    private Dictionary<int, string> paths = [];
     private Dictionary<int, int> directCounts = [];
-    private string? error;
 
+    private MudTextField<string> newNameField = default!;
     private string newName = "";
     private int? newParentId;
 
@@ -127,25 +148,33 @@ else
         nodes = await db.Set<TNode>().AsNoTracking().ToListAsync();
         directCounts = await LoadCounts(db);
         entries = Tree.Flatten(nodes);
+        paths = entries.ToDictionary(e => e.Node.Id, e => e.Path);
     }
+
+    private string PathOf(int? id) => id is int i ? paths.GetValueOrDefault(i) ?? "" : "";
 
     private int TotalCount(int id) =>
         Tree.SelfAndDescendants(nodes, id).Sum(i => directCounts.GetValueOrDefault(i));
 
-    private void PrepareChild(int parentId)
+    private async Task OnNewKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddAsync();
+    }
+
+    private async Task PrepareChildAsync(int parentId)
     {
         newParentId = parentId;
         newName = "";
+        await newNameField.FocusAsync();
     }
 
     private async Task AddAsync()
     {
-        error = null;
         var name = newName.Trim();
         if (name.Length == 0) return;
         if (nodes.Any(n => n.ParentId == newParentId && string.Equals(n.Name, name, StringComparison.CurrentCultureIgnoreCase)))
         {
-            error = $"\"{name}\" gibt es auf dieser Ebene schon.";
+            Snackbar.Add($"\"{name}\" gibt es auf dieser Ebene schon.", Severity.Warning);
             return;
         }
 
@@ -154,11 +183,11 @@ else
         await db.SaveChangesAsync();
         newName = "";
         await LoadAsync();
+        Snackbar.Add($"\"{name}\" angelegt.", Severity.Success);
     }
 
     private void StartEdit(TNode node)
     {
-        error = null;
         editId = node.Id;
         editName = node.Name;
         editDescription = node.Description;
@@ -169,28 +198,31 @@ else
 
     private async Task SaveEditAsync()
     {
-        error = null;
         var name = editName.Trim();
-        if (name.Length == 0) { error = "Name darf nicht leer sein."; return; }
+        if (name.Length == 0)
+        {
+            Snackbar.Add("Name darf nicht leer sein.", Severity.Warning);
+            return;
+        }
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var node = await db.Set<TNode>().FindAsync(editId);
-        if (node is null) { editId = null; await LoadAsync(); return; }
-
-        node.Name = name;
-        node.Description = string.IsNullOrWhiteSpace(editDescription) ? null : editDescription.Trim();
-        node.ParentId = editParentId;
-        await db.SaveChangesAsync();
+        if (node is not null)
+        {
+            node.Name = name;
+            node.Description = string.IsNullOrWhiteSpace(editDescription) ? null : editDescription.Trim();
+            node.ParentId = editParentId;
+            await db.SaveChangesAsync();
+        }
         editId = null;
         await LoadAsync();
     }
 
     private async Task DeleteAsync(TNode node)
     {
-        error = null;
         if (nodes.Any(n => n.ParentId == node.Id))
         {
-            error = $"\"{node.Name}\" hat noch Unterebenen. Bitte diese zuerst löschen oder verschieben.";
+            Snackbar.Add($"\"{node.Name}\" hat noch Unterebenen. Bitte diese zuerst löschen oder verschieben.", Severity.Warning);
             return;
         }
 
@@ -198,7 +230,8 @@ else
         var message = count > 0
             ? $"\"{node.Name}\" löschen? {count} Bauteil(e) sind hier zugeordnet und verlieren die Zuordnung."
             : $"\"{node.Name}\" löschen?";
-        if (!await JS.InvokeAsync<bool>("confirm", message)) return;
+        var confirmed = await Dialogs.ShowMessageBoxAsync($"{Singular} löschen", message, yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true) return;
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var entity = await db.Set<TNode>().FindAsync(node.Id);
@@ -208,5 +241,6 @@ else
             await db.SaveChangesAsync();
         }
         await LoadAsync();
+        Snackbar.Add($"\"{node.Name}\" gelöscht.", Severity.Info);
     }
 }
