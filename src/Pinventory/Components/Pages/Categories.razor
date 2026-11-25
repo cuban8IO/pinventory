@@ -1,4 +1,5 @@
 @page "/categories"
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
 
 <PageTitle>Kategorien · Pinventory</PageTitle>
 
@@ -6,11 +7,34 @@
 <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
     Kategorien lassen sich beliebig verschachteln, z.B. <i>Halbleiter › Transistoren</i>.
     Ein Klick auf den Namen zeigt alle Bauteile darin (inkl. Unterkategorien).
+    Über <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" Style="vertical-align: middle" /> legst du fest,
+    welche Eigenschaften (z.B. Vorwärtsspannung bei Dioden) beim Einlagern abgefragt werden.
 </MudText>
 
-<TreeManager TNode="Category" Singular="Kategorie" FilterQueryName="category" LoadCounts="LoadCounts" />
+<TreeManager TNode="Category" Singular="Kategorie" FilterQueryName="category" LoadCounts="LoadCounts">
+    <ExtraActions Context="c">
+        @{ var count = attributeCounts.GetValueOrDefault(c.Id); }
+        <MudTooltip Text="@(count > 0 ? $"Eigenschaften ({count})" : "Eigenschaften festlegen")">
+            <MudBadge Content="count" Visible="@(count > 0)" Color="Color.Primary" Overlap="true" Dot="false" Bordered="false"
+                      BadgeClass="attr-badge">
+                <MudIconButton Icon="@Icons.Material.Filled.Tune" Size="Size.Small" Href="@($"categories/{c.Id}/attributes")" />
+            </MudBadge>
+        </MudTooltip>
+    </ExtraActions>
+</TreeManager>
 
 @code {
+    private Dictionary<int, int> attributeCounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        attributeCounts = await db.AttributeDefinitions
+            .GroupBy(a => a.CategoryId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+    }
+
     private static Task<Dictionary<int, int>> LoadCounts(PinventoryDbContext db) =>
         db.Parts.Where(p => p.CategoryId != null)
             .GroupBy(p => p.CategoryId!.Value)

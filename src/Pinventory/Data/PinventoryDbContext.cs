@@ -7,6 +7,9 @@ public class PinventoryDbContext(DbContextOptions<PinventoryDbContext> options) 
     public DbSet<Part> Parts => Set<Part>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
+    public DbSet<Package> Packages => Set<Package>();
+    public DbSet<AttributeDefinition> AttributeDefinitions => Set<AttributeDefinition>();
+    public DbSet<PartAttributeValue> PartAttributeValues => Set<PartAttributeValue>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,12 +27,37 @@ public class PinventoryDbContext(DbContextOptions<PinventoryDbContext> options) 
             e.HasIndex(l => new { l.ParentId, l.Name });
         });
 
+        modelBuilder.Entity<Package>(e =>
+        {
+            e.HasIndex(p => p.Name).IsUnique();
+            e.Property(p => p.Name).UseCollation("NOCASE");
+        });
+
+        modelBuilder.Entity<AttributeDefinition>(e =>
+        {
+            e.HasOne(a => a.Category).WithMany(c => c.Attributes)
+                .HasForeignKey(a => a.CategoryId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(a => new { a.CategoryId, a.SortOrder });
+            e.Ignore(a => a.OptionList);
+        });
+
+        modelBuilder.Entity<PartAttributeValue>(e =>
+        {
+            e.HasOne(v => v.Part).WithMany(p => p.Attributes)
+                .HasForeignKey(v => v.PartId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(v => v.AttributeDefinition).WithMany(a => a.Values)
+                .HasForeignKey(v => v.AttributeDefinitionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(v => new { v.PartId, v.AttributeDefinitionId }).IsUnique();
+        });
+
         modelBuilder.Entity<Part>(e =>
         {
             e.HasOne(p => p.Category).WithMany(c => c.Parts)
                 .HasForeignKey(p => p.CategoryId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(p => p.StorageLocation).WithMany(l => l.Parts)
                 .HasForeignKey(p => p.StorageLocationId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(p => p.Package).WithMany(k => k.Parts)
+                .HasForeignKey(p => p.PackageId).OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(p => p.Name);
             e.Ignore(p => p.IsLowStock);
         });

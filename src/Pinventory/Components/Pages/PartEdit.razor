@@ -4,6 +4,7 @@
 @inject NavigationManager Nav
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <PageTitle>@(IsNew ? "Neues Bauteil" : model?.Name) · Pinventory</PageTitle>
 
@@ -32,9 +33,9 @@ else
                                   Placeholder="z.B. Widerstand 10kΩ, BC547, ATmega328P" Variant="Variant.Outlined" AutoFocus="true" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudSelect T="int?" @bind-Value="model.CategoryId" Label="Kategorie" Variant="Variant.Outlined"
-                               Clearable="true" Dense="true" ToStringFunc="id => Label(categories, id)">
-                        @foreach (var c in categories)
+                    <MudSelect T="int?" Value="model.CategoryId" ValueChanged="OnCategoryChanged" Label="Kategorie" Variant="Variant.Outlined"
+                               Clearable="true" Dense="true" ToStringFunc="id => Label(categoryTree, id)">
+                        @foreach (var c in categoryTree)
                         {
                             <MudSelectItem T="int?" Value="c.Node.Id">
                                 <span style="padding-left: @(c.Depth * 1.25)rem">@c.Node.Name</span>
@@ -49,15 +50,13 @@ else
                                      Variant="Variant.Outlined" MaxItems="20" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudAutocomplete T="string" @bind-Value="model.Package" Label="Bauform / Gehäuse" Placeholder="0805, TO-92, DIP-8"
-                                     SearchFunc="(t, ct) => Suggest(knownPackages, t)" CoerceText="false" CoerceValue="true"
-                                     Variant="Variant.Outlined" MaxItems="20" />
+                    <PackagePicker Packages="packages" @bind-Value="model.PackageId" />
                 </MudItem>
                 <MudItem xs="12" md="4">
                     <MudSelect T="int?" @bind-Value="model.StorageLocationId" Label="Lagerort" Variant="Variant.Outlined"
-                               Clearable="true" Dense="true" ToStringFunc="id => Label(locations, id)"
-                               HelperText="@(locations.Count == 0 ? "Noch keine Lagerorte angelegt" : null)">
-                        @foreach (var l in locations)
+                               Clearable="true" Dense="true" ToStringFunc="id => Label(locationTree, id)"
+                               HelperText="@(locationTree.Count == 0 ? "Noch keine Lagerorte angelegt" : null)">
+                        @foreach (var l in locationTree)
                         {
                             <MudSelectItem T="int?" Value="l.Node.Id">
                                 <span style="padding-left: @(l.Depth * 1.25)rem">@l.Node.Name</span>
@@ -81,6 +80,20 @@ else
                 <MudItem xs="12" sm="6" md="3">
                     <MudTextField @bind-Value="model.PartNumber" For="() => model.PartNumber" Label="Teilenummer (MPN)" Variant="Variant.Outlined" />
                 </MudItem>
+
+                @if (applicable.Count > 0)
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="mb-2" />
+                        <div class="d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" Color="Color.Primary" />
+                            <MudText Typo="Typo.subtitle2">Eigenschaften · @Label(categoryTree, model.CategoryId)</MudText>
+                            <MudSpacer />
+                            <MudLink Href="@($"categories/{model.CategoryId}/attributes")" Typo="Typo.caption">Eigenschaften verwalten</MudLink>
+                        </div>
+                    </MudItem>
+                    <AttributeFields Definitions="applicable" Values="attributeInputs" />
+                }
 
                 <MudItem xs="12">
                     <MudTextField @bind-Value="model.Description" For="() => model.Description" Label="Kurzbeschreibung"
@@ -138,47 +151,76 @@ else
     [SupplyParameterFromQuery(Name = "category")] public int? PresetCategory { get; set; }
     [SupplyParameterFromQuery(Name = "location")] public int? PresetLocation { get; set; }
 
-    [Inject] private IJSRuntime JS { get; set; } = default!;
-
     private bool IsNew => Id is null;
     private Part? model;
     private bool notFound;
     private bool addAnother;
 
     // Wird über einen Seitenwechsel hinweg übergeben (Duplizieren).
-    private Part? pendingCopy;
+    private (Part Part, Dictionary<int, string?> Attributes)? pendingCopy;
 
-    private List<TreeEntry<Category>> categories = [];
-    private List<TreeEntry<StorageLocation>> locations = [];
+    private List<Category> categories = [];
+    private List<TreeEntry<Category>> categoryTree = [];
+    private List<TreeEntry<StorageLocation>> locationTree = [];
+    private List<Package> packages = [];
+    private List<AttributeDefinition> definitions = [];
     private List<string> knownValues = [];
-    private List<string> knownPackages = [];
     private List<string> knownManufacturers = [];
+
+    /// <summary>Eigenschaften der gewählten Kategorie (inkl. übergeordneter).</summary>
+    private List<AttributeDefinition> applicable = [];
+
+    /// <summary>Eingaben aller Eigenschaften (Definition-Id → Text). Bleiben beim Kategoriewechsel erhalten.</summary>
+    private Dictionary<int, string?> attributeInputs = [];
 
     protected override async Task OnParametersSetAsync()
     {
         notFound = false;
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        categories = Tree.Flatten(await db.Categories.AsNoTracking().ToListAsync());
-        locations = Tree.Flatten(await db.StorageLocations.AsNoTracking().ToListAsync());
+        categories = await db.Categories.AsNoTracking().ToListAsync();
+        categoryTree = Tree.Flatten(categories);
+        locationTree = Tree.Flatten(await db.StorageLocations.AsNoTracking().ToListAsync());
+        packages = await db.Packages.AsNoTracking().OrderBy(p => p.SortOrder).ToListAsync();
+        definitions = await db.AttributeDefinitions.AsNoTracking().ToListAsync();
 
         // Vorschläge aus bereits erfassten Bauteilen.
-        var all = await db.Parts.AsNoTracking()
-            .Select(p => new { p.Value, p.Package, p.Manufacturer }).ToListAsync();
+        var all = await db.Parts.AsNoTracking().Select(p => new { p.Value, p.Manufacturer }).ToListAsync();
         knownValues = Distinct(all.Select(p => p.Value));
-        knownPackages = Distinct(all.Select(p => p.Package));
         knownManufacturers = Distinct(all.Select(p => p.Manufacturer));
 
         if (IsNew)
         {
-            model = pendingCopy ?? new Part { CategoryId = PresetCategory, StorageLocationId = PresetLocation };
+            if (pendingCopy is { } copy)
+            {
+                model = copy.Part;
+                attributeInputs = copy.Attributes;
+            }
+            else
+            {
+                model = new Part { CategoryId = PresetCategory, StorageLocationId = PresetLocation };
+                attributeInputs = [];
+            }
             pendingCopy = null;
         }
         else
         {
             model = await db.Parts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == Id);
             notFound = model is null;
+            var byId = definitions.ToDictionary(d => d.Id);
+            attributeInputs = await db.PartAttributeValues.AsNoTracking().Where(v => v.PartId == Id)
+                .ToDictionaryAsync(v => v.AttributeDefinitionId, v => (string?)v.Value);
+            foreach (var key in attributeInputs.Keys.ToList())
+                if (byId.TryGetValue(key, out var def)) attributeInputs[key] = Attributes.ToInput(def, attributeInputs[key]);
         }
+        applicable = Attributes.For(model?.CategoryId, categories, definitions);
+    }
+
+    private void OnCategoryChanged(int? categoryId)
+    {
+        if (model is null) return;
+        model.CategoryId = categoryId;
+        applicable = Attributes.For(categoryId, categories, definitions);
     }
 
     private static string Label<T>(List<TreeEntry<T>> entries, int? id) where T : ITreeNode =>
@@ -205,10 +247,17 @@ else
     private async Task SaveAsync()
     {
         if (model is null) return;
+
+        var (stored, error) = Attributes.Validate(applicable, attributeInputs);
+        if (error is not null)
+        {
+            Snackbar.Add(error, Severity.Warning);
+            return;
+        }
+
         model.Name = model.Name.Trim();
         model.Description = Clean(model.Description);
         model.Value = Clean(model.Value);
-        model.Package = Clean(model.Package);
         model.Manufacturer = Clean(model.Manufacturer);
         model.PartNumber = Clean(model.PartNumber);
         model.DatasheetUrl = Clean(model.DatasheetUrl);
@@ -218,6 +267,7 @@ else
         if (IsNew) db.Parts.Add(model);
         else db.Parts.Update(model);
         await db.SaveChangesAsync();
+        await Attributes.ReplaceValuesAsync(db, model.Id, stored);
 
         Snackbar.Add($"\"{model.Name}\" gespeichert.", Severity.Success);
 
@@ -229,6 +279,7 @@ else
         {
             // Bereits auf "Neu" → Formular direkt zurücksetzen, Kategorie & Lagerort behalten.
             model = new Part { CategoryId = model.CategoryId, StorageLocationId = model.StorageLocationId };
+            attributeInputs = [];
         }
         else
         {
@@ -239,12 +290,12 @@ else
     private void Duplicate()
     {
         if (model is null) return;
-        pendingCopy = new Part
+        var copy = new Part
         {
             Name = model.Name + " (Kopie)",
             Description = model.Description,
             Value = model.Value,
-            Package = model.Package,
+            PackageId = model.PackageId,
             Manufacturer = model.Manufacturer,
             PartNumber = model.PartNumber,
             MinQuantity = model.MinQuantity,
@@ -253,6 +304,7 @@ else
             CategoryId = model.CategoryId,
             StorageLocationId = model.StorageLocationId,
         };
+        pendingCopy = (copy, new Dictionary<int, string?>(attributeInputs));
         Snackbar.Add("Kopie erstellt – Werte anpassen und speichern.", Severity.Info);
         Nav.NavigateTo("parts/new");
     }

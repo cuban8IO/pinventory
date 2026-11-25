@@ -1,0 +1,290 @@
+@page "/categories/{Id:int}/attributes"
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Eigenschaften · @category?.Name · Pinventory</PageTitle>
+
+<MudButton Href="categories" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Class="mb-1">
+    Kategorien
+</MudButton>
+
+@if (notFound)
+{
+    <MudAlert Severity="Severity.Warning">Diese Kategorie gibt es nicht (mehr).</MudAlert>
+}
+else if (category is not null)
+{
+    <MudText Typo="Typo.h4" Class="mb-1">Eigenschaften: @category.Name</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+        @path · Diese Felder erscheinen beim Einlagern, sobald die Kategorie (oder eine Unterkategorie) gewählt ist.
+    </MudText>
+
+    @if (inherited.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Geerbt von übergeordneten Kategorien</MudText>
+        <MudPaper Outlined="true" Class="pa-3 mb-4 d-flex flex-wrap gap-2">
+            @foreach (var d in inherited)
+            {
+                <MudTooltip Text="@($"aus {categories.First(c => c.Id == d.CategoryId).Name}")">
+                    <MudLink Href="@($"categories/{d.CategoryId}/attributes")">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@d.Name @(d.Unit is null ? "" : $"[{d.Unit}]")</MudChip>
+                    </MudLink>
+                </MudTooltip>
+            }
+        </MudPaper>
+    }
+
+    <MudText Typo="Typo.subtitle2" Class="mb-1">Eigene Eigenschaften</MudText>
+    <MudSimpleTable Dense="true" Hover="true" Outlined="true" Elevation="0" Class="mb-4">
+        <thead>
+            <tr>
+                <th style="width: 1%"></th>
+                <th>Name</th>
+                <th>Typ</th>
+                <th>Einheit</th>
+                <th>Auswahlmöglichkeiten</th>
+                <th style="text-align: right">Werte</th>
+                <th style="width: 1%"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (own.Count == 0)
+            {
+                <tr><td colspan="7"><MudText Typo="Typo.body2" Class="mud-text-secondary">Noch keine eigenen Eigenschaften.</MudText></td></tr>
+            }
+            @for (var i = 0; i < own.Count; i++)
+            {
+                var d = own[i];
+                var index = i;
+                if (editId == d.Id)
+                {
+                    <tr>
+                        <td></td>
+                        <td colspan="5">
+                            <AttributeEditor Name="@editName" NameChanged="v => editName = v"
+                                             Type="editType" TypeChanged="v => editType = v"
+                                             Unit="@editUnit" UnitChanged="v => editUnit = v"
+                                             Options="@editOptions" OptionsChanged="v => editOptions = v" />
+                        </td>
+                        <td style="white-space: nowrap">
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" OnClick="SaveEditAsync" aria-label="Speichern" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="() => editId = null" aria-label="Abbrechen" />
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td style="white-space: nowrap">
+                            <MudIconButton Icon="@Icons.Material.Filled.KeyboardArrowUp" Size="Size.Small" Disabled="@(index == 0)"
+                                           OnClick="() => MoveAsync(index, -1)" aria-label="Nach oben" />
+                            <MudIconButton Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" Disabled="@(index == own.Count - 1)"
+                                           OnClick="() => MoveAsync(index, +1)" aria-label="Nach unten" />
+                        </td>
+                        <td><b>@d.Name</b></td>
+                        <td>@Attributes.TypeName(d.Type)</td>
+                        <td>@d.Unit</td>
+                        <td><MudText Typo="Typo.caption">@string.Join(" · ", d.OptionList)</MudText></td>
+                        <td style="text-align: right">@valueCounts.GetValueOrDefault(d.Id)</td>
+                        <td style="white-space: nowrap">
+                            <MudTooltip Text="Bearbeiten">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => StartEdit(d)" />
+                            </MudTooltip>
+                            <MudTooltip Text="Löschen">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(d)" />
+                            </MudTooltip>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </MudSimpleTable>
+
+    <MudText Typo="Typo.subtitle2" Class="mb-1">Neue Eigenschaft</MudText>
+    <MudPaper Outlined="true" Class="pa-3 mb-4">
+        <div class="d-flex flex-wrap align-start gap-2">
+            <AttributeEditor Name="@newName" NameChanged="v => newName = v"
+                             Type="newType" TypeChanged="v => newType = v"
+                             Unit="@newUnit" UnitChanged="v => newUnit = v"
+                             Options="@newOptions" OptionsChanged="v => newOptions = v" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mt-1"
+                       Disabled="@string.IsNullOrWhiteSpace(newName)" OnClick="AddAsync">
+                Hinzufügen
+            </MudButton>
+        </div>
+    </MudPaper>
+
+    @if (children.Count > 0)
+    {
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+            Gilt auch für: @string.Join(", ", children.Select(c => c.Name))
+        </MudText>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool notFound;
+    private Category? category;
+    private string path = "";
+    private List<Category> categories = [];
+    private List<Category> children = [];
+    private List<AttributeDefinition> own = [];
+    private List<AttributeDefinition> inherited = [];
+    private Dictionary<int, int> valueCounts = [];
+
+    private string? newName;
+    private AttributeType newType = AttributeType.Zahl;
+    private string? newUnit;
+    private string? newOptions;
+
+    private int? editId;
+    private string? editName;
+    private AttributeType editType;
+    private string? editUnit;
+    private string? editOptions;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        categories = await db.Categories.AsNoTracking().ToListAsync();
+        category = categories.FirstOrDefault(c => c.Id == Id);
+        notFound = category is null;
+        if (category is null) return;
+
+        path = Tree.Paths(categories).GetValueOrDefault(Id) ?? category.Name;
+        children = categories.Where(c => Tree.SelfAndDescendants(categories, Id).Contains(c.Id) && c.Id != Id)
+            .OrderBy(c => c.Name).ToList();
+
+        var definitions = await db.AttributeDefinitions.AsNoTracking().ToListAsync();
+        var applicable = Attributes.For(Id, categories, definitions);
+        own = applicable.Where(d => d.CategoryId == Id).ToList();
+        inherited = applicable.Where(d => d.CategoryId != Id).ToList();
+
+        var ownIds = own.Select(d => d.Id).ToList();
+        valueCounts = await db.PartAttributeValues.Where(v => ownIds.Contains(v.AttributeDefinitionId))
+            .GroupBy(v => v.AttributeDefinitionId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+    }
+
+    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    /// <summary>Optionen aufräumen: "NPN; PNP;;" → "NPN;PNP".</summary>
+    private static string? CleanOptions(string? s)
+    {
+        var parts = (s ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 0 ? null : string.Join(";", parts.Distinct());
+    }
+
+    private string? Check(string? name, AttributeType type, string? options, int? exceptId)
+    {
+        if (Clean(name) is not string n) return "Name darf nicht leer sein.";
+        if (own.Concat(inherited).Any(d => d.Id != exceptId && string.Equals(d.Name, n, StringComparison.CurrentCultureIgnoreCase)))
+            return $"Die Eigenschaft \"{n}\" gibt es hier schon.";
+        if (type == AttributeType.Auswahl && CleanOptions(options) is null)
+            return "Bei Typ Auswahl bitte Möglichkeiten angeben (mit ; getrennt).";
+        return null;
+    }
+
+    private async Task AddAsync()
+    {
+        if (Check(newName, newType, newOptions, null) is string error)
+        {
+            Snackbar.Add(error, Severity.Warning);
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.AttributeDefinitions.Add(new AttributeDefinition
+        {
+            CategoryId = Id,
+            Name = Clean(newName)!,
+            Type = newType,
+            Unit = Clean(newUnit),
+            Options = newType == AttributeType.Auswahl ? CleanOptions(newOptions) : null,
+            SortOrder = own.Select(d => d.SortOrder).DefaultIfEmpty(0).Max() + 1,
+        });
+        await db.SaveChangesAsync();
+        Snackbar.Add($"Eigenschaft \"{Clean(newName)}\" angelegt.", Severity.Success);
+        newName = null;
+        newUnit = null;
+        newOptions = null;
+        await LoadAsync();
+    }
+
+    private void StartEdit(AttributeDefinition d)
+    {
+        editId = d.Id;
+        editName = d.Name;
+        editType = d.Type;
+        editUnit = d.Unit;
+        editOptions = d.Options?.Replace(";", "; ");
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (Check(editName, editType, editOptions, editId) is string error)
+        {
+            Snackbar.Add(error, Severity.Warning);
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var d = await db.AttributeDefinitions.FindAsync(editId);
+        if (d is not null)
+        {
+            if (d.Type != editType && valueCounts.GetValueOrDefault(d.Id) > 0)
+            {
+                var ok = await Dialogs.ShowMessageBoxAsync("Typ ändern",
+                    $"\"{d.Name}\" hat bereits {valueCounts[d.Id]} Wert(e). Beim Typwechsel bleiben sie als Text erhalten, " +
+                    "passen aber evtl. nicht mehr (z.B. keine Zahl). Trotzdem ändern?",
+                    yesText: "Ändern", cancelText: "Abbrechen");
+                if (ok != true) return;
+            }
+            d.Name = Clean(editName)!;
+            d.Type = editType;
+            d.Unit = Clean(editUnit);
+            d.Options = editType == AttributeType.Auswahl ? CleanOptions(editOptions) : null;
+            await db.SaveChangesAsync();
+        }
+        editId = null;
+        await LoadAsync();
+    }
+
+    private async Task MoveAsync(int index, int direction)
+    {
+        var target = index + direction;
+        if (target < 0 || target >= own.Count) return;
+        var reordered = own.ToList();
+        (reordered[index], reordered[target]) = (reordered[target], reordered[index]);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        for (var i = 0; i < reordered.Count; i++)
+        {
+            var id = reordered[i].Id;
+            var order = i + 1;
+            await db.AttributeDefinitions.Where(d => d.Id == id).ExecuteUpdateAsync(s => s.SetProperty(d => d.SortOrder, order));
+        }
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(AttributeDefinition d)
+    {
+        var count = valueCounts.GetValueOrDefault(d.Id);
+        var message = count > 0
+            ? $"\"{d.Name}\" löschen? Die Werte bei {count} Bauteil(en) gehen dabei verloren."
+            : $"\"{d.Name}\" löschen?";
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Eigenschaft löschen", message, yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.AttributeDefinitions.Where(x => x.Id == d.Id).ExecuteDeleteAsync();
+        Snackbar.Add($"\"{d.Name}\" gelöscht.", Severity.Info);
+        await LoadAsync();
+    }
+}

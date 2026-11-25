@@ -1,0 +1,264 @@
+@page "/packages"
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Bauformen · Pinventory</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Bauformen</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Gehäuse und Baugrößen, die beim Einlagern zur Auswahl stehen. Die gängigen Standardbauformen sind bereits angelegt.
+</MudText>
+
+@* ---- Neue Bauform ---- *@
+<MudPaper Outlined="true" Class="pa-3 mb-4">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" sm="6" md="2">
+            <MudTextField @bind-Value="newName" Label="Neue Bauform" Placeholder="z.B. SOT-23-8" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" OnKeyDown="OnNewKeyDown" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudSelect T="MountingType" @bind-Value="newMounting" Label="Bauart" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var m in Enum.GetValues<MountingType>())
+                {
+                    <MudSelectItem T="MountingType" Value="m">@m</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudAutocomplete T="string" @bind-Value="newGroup" Label="Gruppe" Placeholder="z.B. SOT"
+                             SearchFunc="SearchGroups" CoerceValue="true" CoerceText="false" MaxItems="null"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="9" md="4">
+            <MudTextField @bind-Value="newDescription" Label="Beschreibung / Maße" Placeholder="z.B. 2,9 × 1,6 mm"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" OnKeyDown="OnNewKeyDown" Immediate="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3" md="2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.Add"
+                       Disabled="@string.IsNullOrWhiteSpace(newName)" OnClick="AddAsync">
+                Hinzufügen
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* ---- Filter ---- *@
+<div class="d-flex flex-wrap align-center gap-3 mb-3">
+    <MudTextField T="string" Value="search" ValueChanged="v => search = v ?? string.Empty" Immediate="true" Placeholder="Bauform suchen …"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width: 20rem" />
+    <MudChipSet T="MountingType?" @bind-SelectedValue="mountingFilter" SelectionMode="SelectionMode.ToggleSelection" Size="Size.Small">
+        @foreach (var m in Enum.GetValues<MountingType>())
+        {
+            <MudChip T="MountingType?" Value="m" Variant="Variant.Outlined" Color="Color.Primary">@m</MudChip>
+        }
+    </MudChipSet>
+    <MudSpacer />
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">@Visible.Count() von @packages.Count Bauformen</MudText>
+</div>
+
+@* ---- Liste, gruppiert ---- *@
+@foreach (var group in Visible.GroupBy(p => (p.Mounting, p.Group ?? "Ohne Gruppe")))
+{
+    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@(group.Key.Mounting == MountingType.SMD ? Color.Info : Color.Warning)">
+            @group.Key.Mounting
+        </MudChip>
+        @group.Key.Item2
+    </MudText>
+    <MudSimpleTable Dense="true" Hover="true" Outlined="true" Elevation="0">
+        <tbody>
+            @foreach (var p in group)
+            {
+                if (editId == p.Id)
+                {
+                    <tr>
+                        <td colspan="3">
+                            <div class="d-flex flex-wrap gap-2">
+                                <MudTextField @bind-Value="editName" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width: 10rem" AutoFocus="true" />
+                                <MudSelect T="MountingType" @bind-Value="editMounting" Label="Bauart" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="width: 8rem">
+                                    @foreach (var m in Enum.GetValues<MountingType>())
+                                    {
+                                        <MudSelectItem T="MountingType" Value="m">@m</MudSelectItem>
+                                    }
+                                </MudSelect>
+                                <MudAutocomplete T="string" @bind-Value="editGroup" Label="Gruppe" SearchFunc="SearchGroups" CoerceValue="true"
+                                                 CoerceText="false" MaxItems="null" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width: 10rem" />
+                                <MudTextField @bind-Value="editDescription" Label="Beschreibung / Maße" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 16rem" />
+                                <MudNumericField T="int" @bind-Value="editSortOrder" Label="Reihenfolge" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width: 8rem" />
+                            </div>
+                        </td>
+                        <td style="white-space: nowrap; width: 1%">
+                            <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" OnClick="SaveEditAsync" aria-label="Speichern" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="() => editId = null" aria-label="Abbrechen" />
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    var count = usage.GetValueOrDefault(p.Id);
+                    <tr>
+                        <td style="width: 12rem"><b>@p.Name</b></td>
+                        <td><MudText Typo="Typo.body2" Class="mud-text-secondary">@p.Description</MudText></td>
+                        <td style="text-align: right; width: 6rem">
+                            @if (count > 0)
+                            {
+                                <MudLink Href="@($"parts?q={Uri.EscapeDataString(p.Name)}")">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@count</MudChip>
+                                </MudLink>
+                            }
+                        </td>
+                        <td style="white-space: nowrap; width: 1%">
+                            <MudTooltip Text="Bearbeiten">
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => StartEdit(p)" />
+                            </MudTooltip>
+                            <MudTooltip Text="Löschen">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(p)" />
+                            </MudTooltip>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    private List<Package> packages = [];
+    private Dictionary<int, int> usage = [];
+
+    private string search = "";
+    private MountingType? mountingFilter;
+
+    private string? newName;
+    private MountingType newMounting = MountingType.SMD;
+    private string? newGroup;
+    private string? newDescription;
+
+    private int? editId;
+    private string? editName;
+    private MountingType editMounting;
+    private string? editGroup;
+    private string? editDescription;
+    private int editSortOrder;
+
+    private IEnumerable<Package> Visible
+    {
+        get
+        {
+            var terms = search.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return packages
+                .Where(p => mountingFilter is null || p.Mounting == mountingFilter)
+                .Where(p => terms.All(t => $"{p.Name} {p.Group} {p.Description}".Contains(t, StringComparison.CurrentCultureIgnoreCase)))
+                .OrderBy(p => p.Mounting).ThenBy(p => p.Group).ThenBy(p => p.SortOrder).ThenBy(p => p.Name);
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        packages = await db.Packages.AsNoTracking().ToListAsync();
+        usage = await db.Parts.Where(p => p.PackageId != null)
+            .GroupBy(p => p.PackageId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+    }
+
+    private Task<IEnumerable<string>> SearchGroups(string? text, CancellationToken _) =>
+        Task.FromResult<IEnumerable<string>>(packages.Select(p => p.Group).OfType<string>().Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Where(g => string.IsNullOrWhiteSpace(text) || g.Contains(text, StringComparison.CurrentCultureIgnoreCase))
+            .Order(StringComparer.CurrentCultureIgnoreCase));
+
+    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private bool NameTaken(string name, int? exceptId) =>
+        packages.Any(p => p.Id != exceptId && string.Equals(p.Name, name, StringComparison.CurrentCultureIgnoreCase));
+
+    private async Task OnNewKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        var name = Clean(newName);
+        if (name is null) return;
+        if (NameTaken(name, null))
+        {
+            Snackbar.Add($"Die Bauform \"{name}\" gibt es schon.", Severity.Warning);
+            return;
+        }
+
+        var group = Clean(newGroup);
+        var sortOrder = packages.Where(p => string.Equals(p.Group, group, StringComparison.CurrentCultureIgnoreCase))
+            .Select(p => p.SortOrder).DefaultIfEmpty(0).Max() + 1;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Packages.Add(new Package
+        {
+            Name = name, Mounting = newMounting, Group = group, Description = Clean(newDescription), SortOrder = sortOrder,
+        });
+        await db.SaveChangesAsync();
+        Snackbar.Add($"Bauform \"{name}\" angelegt.", Severity.Success);
+        newName = null;
+        newDescription = null;
+        await LoadAsync();
+    }
+
+    private void StartEdit(Package p)
+    {
+        editId = p.Id;
+        editName = p.Name;
+        editMounting = p.Mounting;
+        editGroup = p.Group;
+        editDescription = p.Description;
+        editSortOrder = p.SortOrder;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        var name = Clean(editName);
+        if (name is null)
+        {
+            Snackbar.Add("Name darf nicht leer sein.", Severity.Warning);
+            return;
+        }
+        if (NameTaken(name, editId))
+        {
+            Snackbar.Add($"Die Bauform \"{name}\" gibt es schon.", Severity.Warning);
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var p = await db.Packages.FindAsync(editId);
+        if (p is not null)
+        {
+            p.Name = name;
+            p.Mounting = editMounting;
+            p.Group = Clean(editGroup);
+            p.Description = Clean(editDescription);
+            p.SortOrder = editSortOrder;
+            await db.SaveChangesAsync();
+        }
+        editId = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(Package p)
+    {
+        var count = usage.GetValueOrDefault(p.Id);
+        var message = count > 0
+            ? $"\"{p.Name}\" löschen? {count} Bauteil(e) verwenden diese Bauform und haben danach keine Bauform mehr."
+            : $"\"{p.Name}\" löschen?";
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Bauform löschen", message, yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Packages.Where(x => x.Id == p.Id).ExecuteDeleteAsync();
+        Snackbar.Add($"\"{p.Name}\" gelöscht.", Severity.Info);
+        await LoadAsync();
+    }
+}

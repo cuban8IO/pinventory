@@ -1,0 +1,79 @@
+@* Eingabefelder für die Eigenschaften einer Kategorie. Werte liegen in Values (Definition-Id → Eingabetext). *@
+
+@foreach (var def in Definitions)
+{
+    var d = def;
+    <MudItem xs="@Xs" sm="@Sm" md="@Md">
+        @switch (d.Type)
+        {
+            case AttributeType.Auswahl:
+                @* Suchfeld statt Dropdown: tippen filtert, Tab übernimmt – nur vorgegebene Werte möglich. *@
+                <MudAutocomplete T="string" @ref="choices[d.Id]" Value="Get(d)" ValueChanged="v => Set(d, v)" Label="@LabelFor(d)"
+                                 SearchFunc="(text, _) => SearchOptions(d, text)" SelectValueOnTab="true" MaxItems="null"
+                                 CoerceText="false" CoerceValue="false" ResetValueOnEmptyText="true" Clearable="true"
+                                 RelativeWidth="DropdownWidth.Adaptive" Dense="true" Variant="Variant.Outlined" Margin="Margin" />
+                break;
+            case AttributeType.Zahl:
+                <MudTextField T="string" @ref="texts[d.Id]" Value="Get(d)" ValueChanged="v => Set(d, v)" Label="@LabelFor(d)"
+                              Immediate="true" InputMode="DecimalMode" autocomplete="off"
+                              Adornment="@(string.IsNullOrEmpty(d.Unit) ? Adornment.None : Adornment.End)" AdornmentText="@d.Unit"
+                              Error="@HasError(d)" ErrorText="Keine gültige Zahl"
+                              Variant="Variant.Outlined" Margin="Margin" />
+                break;
+            default:
+                <MudTextField T="string" @ref="texts[d.Id]" Value="Get(d)" ValueChanged="v => Set(d, v)" Label="@LabelFor(d)"
+                              Immediate="true" autocomplete="off"
+                              Adornment="@(string.IsNullOrEmpty(d.Unit) ? Adornment.None : Adornment.End)" AdornmentText="@d.Unit"
+                              Variant="Variant.Outlined" Margin="Margin" />
+                break;
+        }
+    </MudItem>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<AttributeDefinition> Definitions { get; set; } = [];
+
+    /// <summary>Definition-Id → Eingabetext (Zahlen mit Komma, ohne Einheit).</summary>
+    [Parameter, EditorRequired] public Dictionary<int, string?> Values { get; set; } = [];
+
+    [Parameter] public EventCallback ValuesChanged { get; set; }
+    [Parameter] public Func<AttributeDefinition, string>? LabelFunc { get; set; }
+    [Parameter] public Margin Margin { get; set; } = Margin.None;
+    [Parameter] public int Xs { get; set; } = 6;
+    [Parameter] public int Sm { get; set; } = 4;
+    [Parameter] public int Md { get; set; } = 3;
+
+    private static readonly InputMode DecimalMode = InputMode.@decimal;
+
+    private readonly Dictionary<int, MudTextField<string>> texts = [];
+    private readonly Dictionary<int, MudAutocomplete<string>> choices = [];
+
+    /// <summary>Optionen, die den Suchtext enthalten – Treffer am Wortanfang zuerst.</summary>
+    private static Task<IEnumerable<string>> SearchOptions(AttributeDefinition d, string? text)
+    {
+        var options = d.OptionList;
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult(options);
+        return Task.FromResult<IEnumerable<string>>(options
+            .Where(o => o.Contains(text, StringComparison.CurrentCultureIgnoreCase))
+            .OrderBy(o => o.StartsWith(text, StringComparison.CurrentCultureIgnoreCase) ? 0 : 1)
+            .ToList());
+    }
+
+    private string LabelFor(AttributeDefinition d) => LabelFunc?.Invoke(d) ?? d.Name;
+    private string? Get(AttributeDefinition d) => Values.GetValueOrDefault(d.Id);
+
+    private bool HasError(AttributeDefinition d) =>
+        d.Type == AttributeType.Zahl && !string.IsNullOrWhiteSpace(Get(d)) && !Attributes.TryParseNumber(Get(d), out _);
+
+    private async Task Set(AttributeDefinition d, string? value)
+    {
+        Values[d.Id] = value;
+        await ValuesChanged.InvokeAsync();
+    }
+
+    public async Task FocusAsync(int definitionId)
+    {
+        if (texts.TryGetValue(definitionId, out var t)) await t.FocusAsync();
+        else if (choices.TryGetValue(definitionId, out var c)) await c.FocusAsync();
+    }
+}

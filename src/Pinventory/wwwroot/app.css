@@ -58,3 +58,12 @@ kbd {
     line-height: 1.5;
     background: var(--mud-palette-background-gray);
 }
+/* Bauform-Auswahl: Liste breiter als das (oft schmale) Eingabefeld */
+.package-popover {
+    min-width: 26rem;
+}
+
+/* Zähler-Badge an den Eigenschaften-Symbolen kompakt halten */
+.attr-badge {
+    transform: scale(.8);
+}

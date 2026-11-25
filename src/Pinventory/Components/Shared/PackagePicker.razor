@@ -1,0 +1,54 @@
+@* Auswahl einer Bauform aus der Liste. Tippen filtert nur – freie Eingaben sind nicht möglich. *@
+
+<MudAutocomplete T="int?" @ref="field" Value="Value" ValueChanged="ValueChanged" Label="@Label"
+                 SearchFunc="Search" ToStringFunc="NameOf" SelectValueOnTab="true" MaxItems="null"
+                 CoerceText="false" CoerceValue="false" ResetValueOnEmptyText="true" Clearable="true"
+                 Placeholder="tippen zum Suchen, z.B. 0805, sot, dip"
+                 Variant="Variant.Outlined" Margin="Margin" Dense="true"
+                 RelativeWidth="DropdownWidth.Ignore" PopoverClass="package-popover">
+    <ItemTemplate Context="id">
+        @{ var p = Get(id); }
+        @if (p is not null)
+        {
+            <div class="d-flex align-center gap-3" style="width: 100%; white-space: nowrap">
+                <b style="min-width: 7rem">@p.Name</b>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@p.Description</MudText>
+                <MudSpacer />
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@p.Mounting · @p.Group</MudText>
+            </div>
+        }
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Package> Packages { get; set; } = [];
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Bauform";
+    [Parameter] public Margin Margin { get; set; } = Margin.None;
+
+    private MudAutocomplete<int?> field = default!;
+
+    public async Task FocusAsync() => await field.FocusAsync();
+
+    private Package? Get(int? id) => id is int i ? Packages.FirstOrDefault(p => p.Id == i) : null;
+    private string NameOf(int? id) => Get(id)?.Name ?? "";
+
+    /// <summary>Alle Suchwörter müssen in Name, Gruppe, Bauart oder Beschreibung vorkommen.</summary>
+    private Task<IEnumerable<int?>> Search(string? text, CancellationToken _)
+    {
+        var terms = (text ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var hits = Packages.Where(p =>
+        {
+            var haystack = $"{p.Name} {p.Group} {p.Mounting} {p.Description}";
+            return terms.All(t => haystack.Contains(t, StringComparison.CurrentCultureIgnoreCase));
+        });
+        // Exakte Treffer und Namensanfänge zuerst: "sot" → SOT-23 vor "TSOT".
+        var first = terms.FirstOrDefault() ?? "";
+        return Task.FromResult(hits
+            .OrderBy(p => p.Name.Equals(first, StringComparison.CurrentCultureIgnoreCase) ? 0
+                        : p.Name.StartsWith(first, StringComparison.CurrentCultureIgnoreCase) ? 1 : 2)
+            .ThenBy(p => p.Mounting).ThenBy(p => p.Group).ThenBy(p => p.SortOrder).ThenBy(p => p.Name)
+            .Select(p => (int?)p.Id));
+    }
+}

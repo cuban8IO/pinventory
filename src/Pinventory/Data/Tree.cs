@@ -41,6 +41,21 @@ public static class Tree
         return result;
     }
 
+    /// <summary>Ids vom obersten Vorfahren bis zum Knoten selbst (Wurzel zuerst).</summary>
+    public static List<int> SelfAndAncestors<T>(IEnumerable<T> nodes, int id) where T : ITreeNode
+    {
+        var byId = nodes.ToDictionary(n => n.Id);
+        var chain = new List<int>();
+        int? current = id;
+        while (current is int c && byId.TryGetValue(c, out var node) && !chain.Contains(c))
+        {
+            chain.Add(c);
+            current = node.ParentId;
+        }
+        chain.Reverse();
+        return chain;
+    }
+
     public static Dictionary<int, string> Paths<T>(IEnumerable<T> nodes) where T : ITreeNode =>
         Flatten(nodes).ToDictionary(e => e.Node.Id, e => e.Path);
 }

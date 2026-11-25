@@ -102,6 +102,7 @@ else
                                 <MudIconButton Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" Color="Color.Primary"
                                                Href="@($"parts/quick?{FilterQueryName}={node.Id}")" />
                             </MudTooltip>
+                            @ExtraActions?.Invoke(node)
                             <MudTooltip Text="Unterebene anlegen">
                                 <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" OnClick="() => PrepareChildAsync(node.Id)" />
                             </MudTooltip>
@@ -128,6 +129,9 @@ else
 
     /// <summary>Liefert die Anzahl Bauteile je Knoten-Id (nur direkt zugeordnete).</summary>
     [Parameter, EditorRequired] public Func<PinventoryDbContext, Task<Dictionary<int, int>>> LoadCounts { get; set; } = default!;
+
+    /// <summary>Zusätzliche Aktionen je Zeile (z.B. "Eigenschaften" bei Kategorien).</summary>
+    [Parameter] public RenderFragment<TNode>? ExtraActions { get; set; }
 
     private List<TNode> nodes = [];
     private List<TreeEntry<TNode>> entries = [];

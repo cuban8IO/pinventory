@@ -20,7 +20,7 @@
     <MudGrid Spacing="2">
         <MudItem xs="12" lg="4">
             <MudTextField T="string" Value="search" ValueChanged="OnSearchChanged" Immediate="true" DebounceInterval="150"
-                          Placeholder="Suchen: Name, Wert, Bauform, Hersteller, Teilenummer …" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Placeholder="Suchen: Name, Wert, Bauform, Eigenschaften, Hersteller …" Variant="Variant.Outlined" Margin="Margin.Dense"
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" AutoFocus="true" />
         </MudItem>
         <MudItem xs="6" lg="3">
@@ -67,17 +67,31 @@ else
                 Filter zurücksetzen
             </MudButton>
         }
+        @if (columnDefinitions.Count > 0)
+        {
+            <MudSpacer />
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" Style="vertical-align: middle" />
+                Eigenschaften als Spalten – zum Sortieren auf die Überschrift klicken
+            </MudText>
+        }
     </div>
 
-    <MudDataGrid T="Part" Items="filtered" Dense="true" Hover="true" Outlined="true" Elevation="0"
-                 SortMode="SortMode.Single" RowsPerPage="50" RowClick="OnRowClick" RowStyle="cursor: pointer">
+    @* Neuer Key bei Kategoriewechsel: die Eigenschafts-Spalten werden neu aufgebaut. *@
+    <MudDataGrid T="Part" @key="categoryId" Items="filtered" Dense="true" Hover="true" Outlined="true" Elevation="0"
+                 SortMode="SortMode.Single" RowsPerPage="50" RowClick="OnRowClick" RowStyle="cursor: pointer"
+                 HorizontalScrollbar="true">
         <Columns>
             <PropertyColumn Property="p => p.Name" Title="Name" InitialDirection="SortDirection.Ascending">
                 <CellTemplate>
                     <MudText Typo="Typo.body2"><b>@context.Item.Name</b></MudText>
                     @if (!string.IsNullOrEmpty(context.Item.Description))
                     {
-                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Item.Description</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="display:block">@context.Item.Description</MudText>
+                    }
+                    @if (columnDefinitions.Count == 0 && AttributeSummary(context.Item) is { Length: > 0 } summary)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Primary" Style="display:block">@summary</MudText>
                     }
                     @if (!string.IsNullOrEmpty(context.Item.Manufacturer) || !string.IsNullOrEmpty(context.Item.PartNumber))
                     {
@@ -86,10 +100,25 @@ else
                 </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="p => p.Value" Title="Wert" />
-            <PropertyColumn Property="p => p.Package" Title="Bauform" />
-            <TemplateColumn T="Part" Title="Kategorie" SortBy="p => CategoryPath(p) ?? string.Empty">
-                <CellTemplate><MudText Typo="Typo.body2">@CategoryPath(context.Item)</MudText></CellTemplate>
+            <TemplateColumn T="Part" Title="Bauform" SortBy="p => PackageName(p)">
+                <CellTemplate><MudText Typo="Typo.body2">@PackageName(context.Item)</MudText></CellTemplate>
             </TemplateColumn>
+
+            @foreach (var def in columnDefinitions)
+            {
+                var d = def;
+                <TemplateColumn T="Part" Title="@(d.Unit is null ? d.Name : $"{d.Name} [{d.Unit}]")"
+                                SortBy="p => Attributes.SortKey(d, ValueOf(p, d))">
+                    <CellTemplate><MudText Typo="Typo.body2">@Attributes.ToInput(d, ValueOf(context.Item, d))</MudText></CellTemplate>
+                </TemplateColumn>
+            }
+
+            @if (columnDefinitions.Count == 0)
+            {
+                <TemplateColumn T="Part" Title="Kategorie" SortBy="p => CategoryPath(p) ?? string.Empty">
+                    <CellTemplate><MudText Typo="Typo.body2">@CategoryPath(context.Item)</MudText></CellTemplate>
+                </TemplateColumn>
+            }
             <TemplateColumn T="Part" Title="Lagerort" SortBy="p => LocationPath(p) ?? string.Empty">
                 <CellTemplate><MudText Typo="Typo.body2">@LocationPath(context.Item)</MudText></CellTemplate>
             </TemplateColumn>
@@ -111,7 +140,7 @@ else
         <NoRecordsContent>
             @if (parts.Count == 0)
             {
-                <MudText>Noch keine Bauteile eingelagert. <MudLink Href="parts/new">Jetzt das erste anlegen</MudLink>.</MudText>
+                <MudText>Noch keine Bauteile eingelagert. <MudLink Href="parts/quick">Jetzt einlagern</MudLink>.</MudText>
             }
             else
             {
@@ -139,23 +168,39 @@ else
     private List<StorageLocation> locations = [];
     private Dictionary<int, string> categoryPaths = [];
     private Dictionary<int, string> locationPaths = [];
+    private Dictionary<int, string> packageNames = [];
+    private List<AttributeDefinition> definitions = [];
+    private Dictionary<int, AttributeDefinition> definitionsById = [];
+
+    /// <summary>Bauteil-Id → (Definition-Id → gespeicherter Wert).</summary>
+    private Dictionary<int, Dictionary<int, string>> attributeValues = [];
+
+    /// <summary>Eigenschaften der gefilterten Kategorie – werden als Spalten gezeigt.</summary>
+    private List<AttributeDefinition> columnDefinitions = [];
 
     private string search = "";
     private int? categoryId;
     private int? locationId;
     private bool lowOnly;
 
+    private bool IsFiltered => search.Length > 0 || categoryId is not null || locationId is not null || lowOnly;
+
     // Aktive Filter als Vorbelegung an die Schnellerfassung weitergeben.
     private string QuickAddHref => $"parts/quick?category={categoryId}&location={locationId}";
-
-    private bool IsFiltered =>search.Length > 0 || categoryId is not null || locationId is not null || lowOnly;
 
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         categories = await db.Categories.AsNoTracking().ToListAsync();
         locations = await db.StorageLocations.AsNoTracking().ToListAsync();
+        packageNames = await db.Packages.AsNoTracking().ToDictionaryAsync(p => p.Id, p => p.Name);
+        definitions = await db.AttributeDefinitions.AsNoTracking().ToListAsync();
+        definitionsById = definitions.ToDictionary(d => d.Id);
         parts = await db.Parts.AsNoTracking().ToListAsync();
+
+        attributeValues = (await db.PartAttributeValues.AsNoTracking().ToListAsync())
+            .GroupBy(v => v.PartId)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(v => v.AttributeDefinitionId, v => v.Value));
 
         categoryTree = Tree.Flatten(categories);
         locationTree = Tree.Flatten(locations);
@@ -170,21 +215,41 @@ else
         categoryId = QueryCategory;
         locationId = QueryLocation;
         lowOnly = QueryLow;
+        columnDefinitions = Attributes.For(categoryId, categories, definitions);
         ApplyFilter();
     }
 
     private string? CategoryPath(Part p) => p.CategoryId is int id ? categoryPaths.GetValueOrDefault(id) : null;
     private string? LocationPath(Part p) => p.StorageLocationId is int id ? locationPaths.GetValueOrDefault(id) : null;
+    private string PackageName(Part p) => p.PackageId is int id ? packageNames.GetValueOrDefault(id) ?? "" : "";
     private string CategoryLabel(int? id) => id is int i ? categoryPaths.GetValueOrDefault(i) ?? "" : "";
     private string LocationLabel(int? id) => id is int i ? locationPaths.GetValueOrDefault(i) ?? "" : "";
+
+    private string? ValueOf(Part p, AttributeDefinition d) =>
+        attributeValues.TryGetValue(p.Id, out var values) ? values.GetValueOrDefault(d.Id) : null;
+
+    /// <summary>Kurzübersicht der Eigenschaften, z.B. "U_DS 60 V · R_DS(on) 28 mΩ".</summary>
+    private string AttributeSummary(Part p)
+    {
+        if (!attributeValues.TryGetValue(p.Id, out var values)) return "";
+        return string.Join(" · ", Attributes.For(p.CategoryId, categories, definitions)
+            .Where(d => values.ContainsKey(d.Id))
+            .Select(d => $"{d.Name} {Attributes.Display(d, values[d.Id])}"));
+    }
 
     private static Color QuantityColor(Part p) =>
         p.IsLowStock ? Color.Error : p.Quantity == 0 ? Color.Warning : Color.Default;
 
     private void OnSearchChanged(string? value) { search = value ?? ""; ApplyFilter(); }
-    private void OnCategoryChanged(int? value) { categoryId = value; ApplyFilter(); }
     private void OnLocationChanged(int? value) { locationId = value; ApplyFilter(); }
     private void OnLowOnlyChanged(bool value) { lowOnly = value; ApplyFilter(); }
+
+    private void OnCategoryChanged(int? value)
+    {
+        categoryId = value;
+        columnDefinitions = Attributes.For(categoryId, categories, definitions);
+        ApplyFilter();
+    }
 
     private void ApplyFilter()
     {
@@ -212,8 +277,11 @@ else
         {
             q = q.Where(p =>
             {
-                var haystack = string.Join(' ', p.Name, p.Description, p.Value, p.Package, p.Manufacturer,
-                    p.PartNumber, p.Notes, CategoryPath(p), LocationPath(p));
+                var attributes = attributeValues.TryGetValue(p.Id, out var values)
+                    ? string.Join(' ', values.Select(v => definitionsById.TryGetValue(v.Key, out var d) ? $"{d.Name} {Attributes.Display(d, v.Value)}" : v.Value))
+                    : "";
+                var haystack = string.Join(' ', p.Name, p.Description, p.Value, PackageName(p), p.Manufacturer,
+                    p.PartNumber, p.Notes, CategoryPath(p), LocationPath(p), attributes);
                 return terms.All(t => haystack.Contains(t, StringComparison.CurrentCultureIgnoreCase));
             });
         }
@@ -227,6 +295,7 @@ else
         categoryId = null;
         locationId = null;
         lowOnly = false;
+        columnDefinitions = [];
         ApplyFilter();
     }
 

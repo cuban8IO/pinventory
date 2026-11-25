@@ -1,0 +1,32 @@
+@* Eingabefelder für eine Eigenschafts-Definition (Name, Typ, Einheit, Auswahlmöglichkeiten). *@
+
+<div class="d-flex flex-wrap gap-2 flex-grow-1">
+    <MudTextField T="string" Value="Name" ValueChanged="NameChanged" Label="Name" Placeholder="z.B. Vorwärtsspannung"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Style="min-width: 14rem" />
+    <MudSelect T="AttributeType" Value="Type" ValueChanged="TypeChanged" Label="Typ" Variant="Variant.Outlined"
+               Margin="Margin.Dense" Dense="true" Style="width: 9rem">
+        @foreach (var t in Enum.GetValues<AttributeType>())
+        {
+            <MudSelectItem T="AttributeType" Value="t">@Attributes.TypeName(t)</MudSelectItem>
+        }
+    </MudSelect>
+    <MudTextField T="string" Value="Unit" ValueChanged="UnitChanged" Label="Einheit" Placeholder="z.B. V, mA, mΩ"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Style="width: 8rem" />
+    @if (Type == AttributeType.Auswahl)
+    {
+        <MudTextField T="string" Value="Options" ValueChanged="OptionsChanged" Label="Möglichkeiten (mit ; trennen)"
+                      Placeholder="z.B. NPN; PNP" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                      Style="min-width: 20rem" />
+    }
+</div>
+
+@code {
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public EventCallback<string?> NameChanged { get; set; }
+    [Parameter] public AttributeType Type { get; set; }
+    [Parameter] public EventCallback<AttributeType> TypeChanged { get; set; }
+    [Parameter] public string? Unit { get; set; }
+    [Parameter] public EventCallback<string?> UnitChanged { get; set; }
+    [Parameter] public string? Options { get; set; }
+    [Parameter] public EventCallback<string?> OptionsChanged { get; set; }
+}

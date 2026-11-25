@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @inject IDbContextFactory<PinventoryDbContext> DbFactory
 @inject NavigationManager Nav
 
@@ -56,7 +56,7 @@
                         {
                             <MudListItem T="Part" Href="@($"parts/{p.Id}")" Icon="@Icons.Material.Filled.Warning" IconColor="Color.Error">
                                 <div class="d-flex justify-space-between align-center">
-                                    <span>@p.Name <MudText Typo="Typo.caption" Inline="true" Class="mud-text-secondary">@p.Value @p.Package</MudText></span>
+                                    <span>@p.Name <MudText Typo="Typo.caption" Inline="true" Class="mud-text-secondary">@p.Value @p.Package?.Name</MudText></span>
                                     <MudChip T="string" Size="Size.Small" Color="Color.Error">@p.Quantity / @p.MinQuantity</MudChip>
                                 </div>
                             </MudListItem>
@@ -80,7 +80,7 @@
                         {
                             <MudListItem T="Part" Href="@($"parts/{p.Id}")">
                                 <div class="d-flex justify-space-between align-center">
-                                    <span>@p.Name <MudText Typo="Typo.caption" Inline="true" Class="mud-text-secondary">@p.Value @p.Package</MudText></span>
+                                    <span>@p.Name <MudText Typo="Typo.caption" Inline="true" Class="mud-text-secondary">@p.Value @p.Package?.Name</MudText></span>
                                     <MudText Typo="Typo.body2" Class="mud-text-secondary">@p.Quantity Stk.</MudText>
                                 </div>
                             </MudListItem>
@@ -111,7 +111,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        var parts = await db.Parts.AsNoTracking().ToListAsync();
+        var parts = await db.Parts.AsNoTracking().Include(p => p.Package).ToListAsync();
         var categories = await db.Categories.AsNoTracking().ToListAsync();
         locationCount = await db.StorageLocations.CountAsync();
 

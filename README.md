@@ -5,6 +5,8 @@ Kleine Lagerverwaltung für Elektronik-Bauteile – Blazor Web-App (.NET 10) mit
 ## Funktionen
 
 - **Schnellerfassung** zum Einlagern am Stück – komplett per Tastatur (siehe unten)
+- **Bauformen** als Auswahlliste – ca. 125 Standard-Gehäuse (0201–2512, SOT, SOIC, QFN, DIP, TO, Axial …) sind vorab angelegt und unter *Bauformen* erweiterbar
+- **Kategorie-Eigenschaften** wie Vorwärtsspannung bei Dioden oder R_DS(on) bei MOSFETs – erscheinen automatisch, sobald die Kategorie gewählt ist (siehe unten)
 - **Bauteile** mit Name, Wert, Bauform, Hersteller, Teilenummer, Menge, Mindestbestand, Datenblatt-Link und Notizen
 - **Kategorien** und **Lagerorte** beliebig verschachtelt (z.B. *Regal A › Sortimentskasten 2 › Fach 14*)
 - **Schnellsuche** über alle Felder – mehrere Wörter werden kombiniert (`10k 0805`)
@@ -25,10 +27,24 @@ Unter **Schnellerfassung** (oder „Einlagern“ oben rechts) lassen sich viele 
 **Felder behalten (📌):** Angepinnte Felder bleiben nach dem Einlagern stehen, der Cursor springt ins erste freie Feld.
 Beispiel Widerstandsserie: *Name*, *Bauform* und *Menge* anpinnen → nur noch `10k` `Enter`, `4k7` `Enter`, `1k` `Enter` …
 
+**Bauform und Auswahl-Eigenschaften** per Tastatur: tippen (`sot`, `to-220`, `n`) und mit `Tab` übernehmen.
+
 **Keine Dubletten:** Gibt es ein Bauteil mit gleichem Namen, Wert und Bauform am selben Lagerort schon, wird nur die Menge erhöht.
 Jeder Eintrag der Sitzung lässt sich unten mit ↶ rückgängig machen.
 
 Tipp: Das ⚡-Symbol bei einem Lagerort oder der Button in der gefilterten Bauteilliste öffnet die Schnellerfassung mit passender Vorbelegung.
+
+## Kategorie-Eigenschaften
+
+Unter **Kategorien** → Symbol *Regler* (🎚) legt man fest, welche Eigenschaften eine Kategorie hat:
+
+- **Zahl** mit Einheit (z.B. *U_F* in V) – Eingabe mit Komma oder Punkt, in der Bauteilliste numerisch sortierbar
+- **Auswahl** aus festen Möglichkeiten (z.B. *N-Kanal; P-Kanal*) – tippen filtert, `Tab` übernimmt
+- **Text** für alles andere
+
+Eigenschaften werden an Unterkategorien vererbt. Für gängige Kategorien (Widerstände, Kondensatoren, Dioden,
+Transistoren, MOSFETs, LEDs, Spannungsregler …) sind Startwerte angelegt.
+Filtert man die Bauteilliste nach einer Kategorie, werden ihre Eigenschaften als Spalten angezeigt.
 
 ## Starten
 

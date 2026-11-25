@@ -17,6 +17,41 @@ namespace Pinventory.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
+            modelBuilder.Entity("Pinventory.Data.AttributeDefinition", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Options")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId", "SortOrder");
+
+                    b.ToTable("AttributeDefinitions");
+                });
+
             modelBuilder.Entity("Pinventory.Data.Category", b =>
                 {
                     b.Property<int>("Id")
@@ -264,6 +299,40 @@ namespace Pinventory.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Pinventory.Data.Package", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Group")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Mounting")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Packages");
+                });
+
             modelBuilder.Entity("Pinventory.Data.Part", b =>
                 {
                     b.Property<int>("Id")
@@ -300,9 +369,8 @@ namespace Pinventory.Data.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Package")
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
+                    b.Property<int?>("PackageId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PartNumber")
                         .HasMaxLength(100)
@@ -327,9 +395,38 @@ namespace Pinventory.Data.Migrations
 
                     b.HasIndex("Name");
 
+                    b.HasIndex("PackageId");
+
                     b.HasIndex("StorageLocationId");
 
                     b.ToTable("Parts");
+                });
+
+            modelBuilder.Entity("Pinventory.Data.PartAttributeValue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AttributeDefinitionId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PartId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttributeDefinitionId");
+
+                    b.HasIndex("PartId", "AttributeDefinitionId")
+                        .IsUnique();
+
+                    b.ToTable("PartAttributeValues");
                 });
 
             modelBuilder.Entity("Pinventory.Data.StorageLocation", b =>
@@ -357,6 +454,17 @@ namespace Pinventory.Data.Migrations
                     b.ToTable("StorageLocations");
                 });
 
+            modelBuilder.Entity("Pinventory.Data.AttributeDefinition", b =>
+                {
+                    b.HasOne("Pinventory.Data.Category", "Category")
+                        .WithMany("Attributes")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("Pinventory.Data.Category", b =>
                 {
                     b.HasOne("Pinventory.Data.Category", "Parent")
@@ -374,6 +482,11 @@ namespace Pinventory.Data.Migrations
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("Pinventory.Data.Package", "Package")
+                        .WithMany("Parts")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Pinventory.Data.StorageLocation", "StorageLocation")
                         .WithMany("Parts")
                         .HasForeignKey("StorageLocationId")
@@ -381,7 +494,28 @@ namespace Pinventory.Data.Migrations
 
                     b.Navigation("Category");
 
+                    b.Navigation("Package");
+
                     b.Navigation("StorageLocation");
+                });
+
+            modelBuilder.Entity("Pinventory.Data.PartAttributeValue", b =>
+                {
+                    b.HasOne("Pinventory.Data.AttributeDefinition", "AttributeDefinition")
+                        .WithMany("Values")
+                        .HasForeignKey("AttributeDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pinventory.Data.Part", "Part")
+                        .WithMany("Attributes")
+                        .HasForeignKey("PartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AttributeDefinition");
+
+                    b.Navigation("Part");
                 });
 
             modelBuilder.Entity("Pinventory.Data.StorageLocation", b =>
@@ -394,11 +528,28 @@ namespace Pinventory.Data.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("Pinventory.Data.AttributeDefinition", b =>
+                {
+                    b.Navigation("Values");
+                });
+
             modelBuilder.Entity("Pinventory.Data.Category", b =>
                 {
+                    b.Navigation("Attributes");
+
                     b.Navigation("Children");
 
                     b.Navigation("Parts");
+                });
+
+            modelBuilder.Entity("Pinventory.Data.Package", b =>
+                {
+                    b.Navigation("Parts");
+                });
+
+            modelBuilder.Entity("Pinventory.Data.Part", b =>
+                {
+                    b.Navigation("Attributes");
                 });
 
             modelBuilder.Entity("Pinventory.Data.StorageLocation", b =>
