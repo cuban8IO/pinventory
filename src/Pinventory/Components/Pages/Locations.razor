@@ -1,0 +1,17 @@
+@page "/locations"
+
+<PageTitle>Lagerorte · Pinventory</PageTitle>
+
+<h1 class="h3 mb-3">Lagerorte</h1>
+<p class="text-muted">Bilde deine Werkstatt ab, z.B. <em>Regal A › Sortimentskasten 2 › Fach 14</em>.
+    Ein Klick auf den Namen zeigt, was dort liegt.</p>
+
+<TreeManager TNode="StorageLocation" Singular="Lagerort" FilterQueryName="location" LoadCounts="LoadCounts" />
+
+@code {
+    private static Task<Dictionary<int, int>> LoadCounts(PinventoryDbContext db) =>
+        db.Parts.Where(p => p.StorageLocationId != null)
+            .GroupBy(p => p.StorageLocationId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+}

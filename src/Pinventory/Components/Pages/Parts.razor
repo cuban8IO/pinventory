@@ -1,0 +1,245 @@
+@page "/parts"
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
+
+<PageTitle>Bauteile · Pinventory</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Bauteile</h1>
+    <a href="parts/new" class="btn btn-primary">+ Neues Bauteil</a>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-12 col-lg-4">
+        <input class="form-control" type="search" placeholder="Suchen: Name, Wert, Bauform, Hersteller, Teilenummer …"
+               @bind="search" @bind:event="oninput" @bind:after="ApplyFilter" autofocus />
+    </div>
+    <div class="col-6 col-lg-3">
+        <select class="form-select" @bind="categoryId" @bind:after="ApplyFilter">
+            <option value="">Alle Kategorien</option>
+            @foreach (var c in categoryTree)
+            {
+                <option value="@c.Node.Id">@(new string(' ', c.Depth * 3))@c.Node.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-6 col-lg-3">
+        <select class="form-select" @bind="locationId" @bind:after="ApplyFilter">
+            <option value="">Alle Lagerorte</option>
+            @foreach (var l in locationTree)
+            {
+                <option value="@l.Node.Id">@(new string(' ', l.Depth * 3))@l.Node.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-12 col-lg-2 d-flex align-items-center">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="lowOnly" @bind="lowOnly" @bind:after="ApplyFilter" />
+            <label class="form-check-label" for="lowOnly">Nur nachbestellen</label>
+        </div>
+    </div>
+</div>
+
+@if (parts is null)
+{
+    <p><em>Lade …</em></p>
+}
+else
+{
+    <p class="text-muted small mb-2">
+        @filtered.Count von @parts.Count Bauteilen · @filtered.Sum(p => p.Quantity) Stück
+        @if (IsFiltered)
+        {
+            <button class="btn btn-link btn-sm p-0 ms-2 align-baseline" @onclick="ResetFilter">Filter zurücksetzen</button>
+        }
+    </p>
+
+    @if (filtered.Count == 0)
+    {
+        <div class="alert alert-light border">
+            @if (parts.Count == 0)
+            {
+                <span>Noch keine Bauteile eingelagert. <a href="parts/new">Jetzt das erste anlegen</a>.</span>
+            }
+            else
+            {
+                <span>Keine Treffer für diese Filter.</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle parts-table">
+                <thead>
+                    <tr>
+                        <SortHeader Title="Name" Key="name" Current="sortKey" Desc="sortDesc" OnSort="SortBy" />
+                        <SortHeader Title="Wert" Key="value" Current="sortKey" Desc="sortDesc" OnSort="SortBy" />
+                        <SortHeader Title="Bauform" Key="package" Current="sortKey" Desc="sortDesc" OnSort="SortBy" CssClass="d-none d-md-table-cell" />
+                        <SortHeader Title="Kategorie" Key="category" Current="sortKey" Desc="sortDesc" OnSort="SortBy" CssClass="d-none d-lg-table-cell" />
+                        <SortHeader Title="Lagerort" Key="location" Current="sortKey" Desc="sortDesc" OnSort="SortBy" />
+                        <SortHeader Title="Menge" Key="qty" Current="sortKey" Desc="sortDesc" OnSort="SortBy" CssClass="text-end" />
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in filtered)
+                    {
+                        <tr @key="p.Id">
+                            <td>
+                                <a href="@($"parts/{p.Id}")" class="fw-semibold">@p.Name</a>
+                                @if (!string.IsNullOrEmpty(p.Description))
+                                {
+                                    <div class="small text-muted text-truncate" style="max-width: 24rem">@p.Description</div>
+                                }
+                                @if (!string.IsNullOrEmpty(p.Manufacturer) || !string.IsNullOrEmpty(p.PartNumber))
+                                {
+                                    <div class="small text-muted">@p.Manufacturer @p.PartNumber</div>
+                                }
+                            </td>
+                            <td>@p.Value</td>
+                            <td class="d-none d-md-table-cell">@p.Package</td>
+                            <td class="d-none d-lg-table-cell small">@CategoryPath(p)</td>
+                            <td class="small">@LocationPath(p)</td>
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-secondary qty-btn" title="Eins entnehmen"
+                                        disabled="@(p.Quantity == 0)" @onclick="() => ChangeQuantityAsync(p, -1)">−</button>
+                                <span class="badge qty-badge @(p.IsLowStock ? "text-bg-danger" : p.Quantity == 0 ? "text-bg-warning" : "text-bg-light border")"
+                                      title="@(p.MinQuantity > 0 ? $"Mindestbestand: {p.MinQuantity}" : null)">@p.Quantity</span>
+                                <button class="btn btn-sm btn-outline-secondary qty-btn" title="Eins hinzufügen"
+                                        @onclick="() => ChangeQuantityAsync(p, +1)">+</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? QueryText { get; set; }
+    [SupplyParameterFromQuery(Name = "category")] public int? QueryCategory { get; set; }
+    [SupplyParameterFromQuery(Name = "location")] public int? QueryLocation { get; set; }
+    [SupplyParameterFromQuery(Name = "low")] public bool QueryLow { get; set; }
+
+    private List<Part>? parts;
+    private List<Part> filtered = [];
+    private List<TreeEntry<Category>> categoryTree = [];
+    private List<TreeEntry<StorageLocation>> locationTree = [];
+    private List<Category> categories = [];
+    private List<StorageLocation> locations = [];
+    private Dictionary<int, string> categoryPaths = [];
+    private Dictionary<int, string> locationPaths = [];
+
+    private string search = "";
+    private int? categoryId;
+    private int? locationId;
+    private bool lowOnly;
+    private string sortKey = "name";
+    private bool sortDesc;
+
+    private bool IsFiltered => search.Length > 0 || categoryId is not null || locationId is not null || lowOnly;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        categories = await db.Categories.AsNoTracking().ToListAsync();
+        locations = await db.StorageLocations.AsNoTracking().ToListAsync();
+        parts = await db.Parts.AsNoTracking().ToListAsync();
+
+        categoryTree = Tree.Flatten(categories);
+        locationTree = Tree.Flatten(locations);
+        categoryPaths = categoryTree.ToDictionary(e => e.Node.Id, e => e.Path);
+        locationPaths = locationTree.ToDictionary(e => e.Node.Id, e => e.Path);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Filter aus der URL übernehmen (z.B. Link von der Übersicht oder den Kategorien).
+        search = QueryText ?? "";
+        categoryId = QueryCategory;
+        locationId = QueryLocation;
+        lowOnly = QueryLow;
+        ApplyFilter();
+    }
+
+    private string? CategoryPath(Part p) => p.CategoryId is int id ? categoryPaths.GetValueOrDefault(id) : null;
+    private string? LocationPath(Part p) => p.StorageLocationId is int id ? locationPaths.GetValueOrDefault(id) : null;
+
+    private void ApplyFilter()
+    {
+        if (parts is null) return;
+        IEnumerable<Part> q = parts;
+
+        if (categoryId is int cid)
+        {
+            var ids = Tree.SelfAndDescendants(categories, cid);
+            q = q.Where(p => p.CategoryId is int id && ids.Contains(id));
+        }
+        if (locationId is int lid)
+        {
+            var ids = Tree.SelfAndDescendants(locations, lid);
+            q = q.Where(p => p.StorageLocationId is int id && ids.Contains(id));
+        }
+        if (lowOnly)
+        {
+            q = q.Where(p => p.IsLowStock);
+        }
+
+        // Jedes Suchwort muss in irgendeinem Feld vorkommen: "10k 0805" findet 10kΩ-Widerstände in 0805.
+        var terms = search.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (terms.Length > 0)
+        {
+            q = q.Where(p =>
+            {
+                var haystack = string.Join(' ', p.Name, p.Description, p.Value, p.Package, p.Manufacturer,
+                    p.PartNumber, p.Notes, CategoryPath(p), LocationPath(p));
+                return terms.All(t => haystack.Contains(t, StringComparison.CurrentCultureIgnoreCase));
+            });
+        }
+
+        filtered = Sort(q).ToList();
+    }
+
+    private IEnumerable<Part> Sort(IEnumerable<Part> q)
+    {
+        var cmp = StringComparer.CurrentCultureIgnoreCase;
+        IOrderedEnumerable<Part> ordered = sortKey switch
+        {
+            "value" => sortDesc ? q.OrderByDescending(p => p.Value, cmp) : q.OrderBy(p => p.Value, cmp),
+            "package" => sortDesc ? q.OrderByDescending(p => p.Package, cmp) : q.OrderBy(p => p.Package, cmp),
+            "category" => sortDesc ? q.OrderByDescending(CategoryPath, cmp) : q.OrderBy(CategoryPath, cmp),
+            "location" => sortDesc ? q.OrderByDescending(LocationPath, cmp) : q.OrderBy(LocationPath, cmp),
+            "qty" => sortDesc ? q.OrderByDescending(p => p.Quantity) : q.OrderBy(p => p.Quantity),
+            _ => sortDesc ? q.OrderByDescending(p => p.Name, cmp) : q.OrderBy(p => p.Name, cmp),
+        };
+        return ordered.ThenBy(p => p.Name, cmp);
+    }
+
+    private void SortBy(string key)
+    {
+        sortDesc = sortKey == key && !sortDesc;
+        sortKey = key;
+        ApplyFilter();
+    }
+
+    private void ResetFilter()
+    {
+        search = "";
+        categoryId = null;
+        locationId = null;
+        lowOnly = false;
+        ApplyFilter();
+    }
+
+    private async Task ChangeQuantityAsync(Part part, int delta)
+    {
+        var newQuantity = Math.Max(0, part.Quantity + delta);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Parts.Where(p => p.Id == part.Id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Quantity, newQuantity)
+                .SetProperty(p => p.UpdatedAt, DateTime.UtcNow));
+        part.Quantity = newQuantity;
+        if (lowOnly) ApplyFilter();
+    }
+}

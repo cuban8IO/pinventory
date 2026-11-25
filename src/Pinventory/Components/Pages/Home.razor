@@ -1,0 +1,127 @@
+﻿@page "/"
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageTitle>Pinventory</PageTitle>
+
+<h1 class="h3 mb-3">Übersicht</h1>
+
+<form class="mb-4" @onsubmit="Search" style="max-width: 40rem">
+    <div class="input-group input-group-lg">
+        <input class="form-control" type="search" placeholder="Was suchst du? z.B. 10k 0805, BC547, ESP32 …"
+               @bind="search" autofocus />
+        <button class="btn btn-primary" type="submit">Suchen</button>
+    </div>
+</form>
+
+@if (loaded)
+{
+    <div class="row g-3 mb-4">
+        <StatCard Label="Bauteil-Typen" Value="@partCount.ToString("N0")" Href="parts" />
+        <StatCard Label="Stück gesamt" Value="@totalQuantity.ToString("N0")" Href="parts" />
+        <StatCard Label="Nachbestellen" Value="@lowStock.Count.ToString()" Href="parts?low=true" Warn="@(lowStock.Count > 0)" />
+        <StatCard Label="Lagerorte" Value="@locationCount.ToString()" Href="locations" />
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <h2 class="h5">Kategorien</h2>
+            <div class="row g-2">
+                @foreach (var c in topCategories)
+                {
+                    <div class="col-sm-6">
+                        <a href="@($"parts?category={c.Category.Id}")" class="card category-card text-decoration-none h-100">
+                            <div class="card-body py-2">
+                                <div class="d-flex justify-content-between">
+                                    <span class="fw-semibold">@c.Category.Name</span>
+                                    <span class="badge text-bg-secondary align-self-center">@c.Count</span>
+                                </div>
+                                @if (c.Children.Count > 0)
+                                {
+                                    <div class="small text-muted text-truncate">@string.Join(" · ", c.Children)</div>
+                                }
+                            </div>
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            @if (lowStock.Count > 0)
+            {
+                <h2 class="h5">Nachbestellen</h2>
+                <ul class="list-group mb-4">
+                    @foreach (var p in lowStock.Take(10))
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="@($"parts/{p.Id}")">@p.Name <span class="text-muted small">@p.Value @p.Package</span></a>
+                            <span class="badge text-bg-danger">@p.Quantity / @p.MinQuantity</span>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <h2 class="h5">Zuletzt geändert</h2>
+            @if (recent.Count == 0)
+            {
+                <p class="text-muted">Noch nichts eingelagert. <a href="parts/new">Erstes Bauteil anlegen</a></p>
+            }
+            else
+            {
+                <ul class="list-group">
+                    @foreach (var p in recent)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <a href="@($"parts/{p.Id}")">@p.Name <span class="text-muted small">@p.Value @p.Package</span></a>
+                            <span class="small text-muted">@p.Quantity Stk.</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private record CategorySummary(Category Category, int Count, List<string> Children);
+
+    private string search = "";
+    private bool loaded;
+    private int partCount;
+    private int totalQuantity;
+    private int locationCount;
+    private List<Part> lowStock = [];
+    private List<Part> recent = [];
+    private List<CategorySummary> topCategories = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var parts = await db.Parts.AsNoTracking().ToListAsync();
+        var categories = await db.Categories.AsNoTracking().ToListAsync();
+        locationCount = await db.StorageLocations.CountAsync();
+
+        partCount = parts.Count;
+        totalQuantity = parts.Sum(p => p.Quantity);
+        lowStock = parts.Where(p => p.IsLowStock).OrderBy(p => p.Name).ToList();
+        recent = parts.OrderByDescending(p => p.UpdatedAt).Take(8).ToList();
+
+        var perCategory = parts.Where(p => p.CategoryId != null)
+            .GroupBy(p => p.CategoryId!.Value).ToDictionary(g => g.Key, g => g.Count());
+
+        topCategories = categories.Where(c => c.ParentId == null)
+            .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(c => new CategorySummary(
+                c,
+                Tree.SelfAndDescendants(categories, c.Id).Sum(id => perCategory.GetValueOrDefault(id)),
+                categories.Where(x => x.ParentId == c.Id).Select(x => x.Name)
+                    .Order(StringComparer.CurrentCultureIgnoreCase).ToList()))
+            .ToList();
+
+        loaded = true;
+    }
+
+    private void Search() =>
+        Nav.NavigateTo(string.IsNullOrWhiteSpace(search) ? "parts" : $"parts?q={Uri.EscapeDataString(search.Trim())}");
+}

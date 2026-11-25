@@ -1,0 +1,212 @@
+@typeparam TNode where TNode : class, ITreeNode, new()
+@inject IDbContextFactory<PinventoryDbContext> DbFactory
+@inject IJSRuntime JS
+
+<div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+    <div>
+        <label class="form-label small mb-1">Neue @Singular</label>
+        <input class="form-control" placeholder="Name" @bind="newName" @bind:event="oninput"
+               @onkeydown="@(e => e.Key == "Enter" ? AddAsync() : Task.CompletedTask)" />
+    </div>
+    <div>
+        <label class="form-label small mb-1">unterhalb von</label>
+        <select class="form-select" @bind="newParentId">
+            <option value="">– oberste Ebene –</option>
+            @foreach (var e in entries)
+            {
+                <option value="@e.Node.Id">@e.Path</option>
+            }
+        </select>
+    </div>
+    <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(newName)" @onclick="AddAsync">Hinzufügen</button>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger py-2">@error</div>
+}
+
+@if (entries.Count == 0)
+{
+    <p class="text-muted">Noch keine Einträge vorhanden.</p>
+}
+else
+{
+    <table class="table table-sm table-hover align-middle tree-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th class="d-none d-md-table-cell">Beschreibung</th>
+                <th class="text-end">Bauteile</th>
+                <th class="text-end" style="width: 1%"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var e in entries)
+            {
+                var node = e.Node;
+                if (editId == node.Id)
+                {
+                    <tr class="table-active">
+                        <td colspan="2">
+                            <div class="d-flex flex-wrap gap-2">
+                                <input class="form-control form-control-sm" style="max-width: 16rem" @bind="editName" />
+                                <input class="form-control form-control-sm" style="max-width: 20rem" placeholder="Beschreibung" @bind="editDescription" />
+                                <select class="form-select form-select-sm" style="max-width: 20rem" @bind="editParentId">
+                                    <option value="">– oberste Ebene –</option>
+                                    @foreach (var p in entries.Where(x => !editExcluded.Contains(x.Node.Id)))
+                                    {
+                                        <option value="@p.Node.Id">@p.Path</option>
+                                    }
+                                </select>
+                            </div>
+                        </td>
+                        <td></td>
+                        <td class="text-nowrap text-end">
+                            <button class="btn btn-sm btn-success" @onclick="SaveEditAsync">Speichern</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => editId = null">Abbrechen</button>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td style="padding-left: @(0.5 + e.Depth * 1.5)rem">
+                            @if (e.Depth > 0) { <span class="text-muted me-1">└</span> }
+                            <a href="@($"parts?{FilterQueryName}={node.Id}")" class="@(e.Depth == 0 ? "fw-semibold" : "")">@node.Name</a>
+                        </td>
+                        <td class="d-none d-md-table-cell text-muted small">@node.Description</td>
+                        <td class="text-end">
+                            @{ var total = TotalCount(node.Id); var direct = directCounts.GetValueOrDefault(node.Id); }
+                            @if (total > 0)
+                            {
+                                <span class="badge text-bg-secondary" title="@direct direkt, @total inkl. Unterebenen">@total</span>
+                            }
+                        </td>
+                        <td class="text-nowrap text-end">
+                            <button class="btn btn-sm btn-outline-secondary" title="Unterebene anlegen" @onclick="() => PrepareChild(node.Id)">+</button>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(node)">Bearbeiten</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(node)">Löschen</button>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    /// <summary>z.B. "Kategorie" oder "Lagerort" – für Beschriftungen.</summary>
+    [Parameter, EditorRequired] public string Singular { get; set; } = "";
+
+    /// <summary>Query-Parameter für den Link in die Bauteilliste ("category" / "location").</summary>
+    [Parameter, EditorRequired] public string FilterQueryName { get; set; } = "";
+
+    /// <summary>Liefert die Anzahl Bauteile je Knoten-Id (nur direkt zugeordnete).</summary>
+    [Parameter, EditorRequired] public Func<PinventoryDbContext, Task<Dictionary<int, int>>> LoadCounts { get; set; } = default!;
+
+    private List<TNode> nodes = [];
+    private List<TreeEntry<TNode>> entries = [];
+    private Dictionary<int, int> directCounts = [];
+    private string? error;
+
+    private string newName = "";
+    private int? newParentId;
+
+    private int? editId;
+    private string editName = "";
+    private string? editDescription;
+    private int? editParentId;
+    private HashSet<int> editExcluded = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        nodes = await db.Set<TNode>().AsNoTracking().ToListAsync();
+        directCounts = await LoadCounts(db);
+        entries = Tree.Flatten(nodes);
+    }
+
+    private int TotalCount(int id) =>
+        Tree.SelfAndDescendants(nodes, id).Sum(i => directCounts.GetValueOrDefault(i));
+
+    private void PrepareChild(int parentId)
+    {
+        newParentId = parentId;
+        newName = "";
+    }
+
+    private async Task AddAsync()
+    {
+        error = null;
+        var name = newName.Trim();
+        if (name.Length == 0) return;
+        if (nodes.Any(n => n.ParentId == newParentId && string.Equals(n.Name, name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            error = $"\"{name}\" gibt es auf dieser Ebene schon.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.Set<TNode>().Add(new TNode { Name = name, ParentId = newParentId });
+        await db.SaveChangesAsync();
+        newName = "";
+        await LoadAsync();
+    }
+
+    private void StartEdit(TNode node)
+    {
+        error = null;
+        editId = node.Id;
+        editName = node.Name;
+        editDescription = node.Description;
+        editParentId = node.ParentId;
+        // Ein Knoten darf nicht unter sich selbst oder einen eigenen Unterknoten verschoben werden.
+        editExcluded = Tree.SelfAndDescendants(nodes, node.Id);
+    }
+
+    private async Task SaveEditAsync()
+    {
+        error = null;
+        var name = editName.Trim();
+        if (name.Length == 0) { error = "Name darf nicht leer sein."; return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var node = await db.Set<TNode>().FindAsync(editId);
+        if (node is null) { editId = null; await LoadAsync(); return; }
+
+        node.Name = name;
+        node.Description = string.IsNullOrWhiteSpace(editDescription) ? null : editDescription.Trim();
+        node.ParentId = editParentId;
+        await db.SaveChangesAsync();
+        editId = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(TNode node)
+    {
+        error = null;
+        if (nodes.Any(n => n.ParentId == node.Id))
+        {
+            error = $"\"{node.Name}\" hat noch Unterebenen. Bitte diese zuerst löschen oder verschieben.";
+            return;
+        }
+
+        var count = directCounts.GetValueOrDefault(node.Id);
+        var message = count > 0
+            ? $"\"{node.Name}\" löschen? {count} Bauteil(e) sind hier zugeordnet und verlieren die Zuordnung."
+            : $"\"{node.Name}\" löschen?";
+        if (!await JS.InvokeAsync<bool>("confirm", message)) return;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var entity = await db.Set<TNode>().FindAsync(node.Id);
+        if (entity is not null)
+        {
+            db.Remove(entity);
+            await db.SaveChangesAsync();
+        }
+        await LoadAsync();
+    }
+}
